@@ -1,15 +1,15 @@
-module.exports = function(count, callback) {
+module.exports = function countDownLatch(count, callback) {
 	function checkDone() {
 		if (count === 0) {
 			callback();
 		}
 	}
 	return {
-		countDown : function countDown() {
+		countDown () {
 			count--;
 			checkDone();
 		},
-		cancel : function cancel() {
+		cancel () {
 			count = 0;
 			//Don't check if done, we're cancelling here
 		}

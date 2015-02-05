@@ -43,6 +43,27 @@ module.exports = {
 			});
 		}
 		next();
+	},
+	/**
+	 * Creates a function that can wrap a node style callback and redirect errors elsewhere.
+	 *
+	 * E.g.:
+	 * let onSuccess = catcher(done);
+	 * fs.readFile('somefile', onSuccess((content) => {}));
+	 *
+	 * If readFile errors, done will be called with the error as it's first argument. If readFile succeeds,
+	 * the arrow function will be called with the file content.
+	 */
+	catcher (errorFunc) {
+		return function (f) {
+			return function (err, ...args) {
+				if (err) {
+					return errorFunc(err);
+				} else {
+					f.apply(this, args);
+				}
+			};
+		};
 	}
 
 };

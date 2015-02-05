@@ -6,7 +6,8 @@
   "author": "Tiddo Langerak <tiddolangerak@gmail.com>",
   "license": "ISC",
   "scripts" : {
-	  "build" : "cd src; 6to5 *.js -d ../out"
+	  "build" : "cd src; 6to5 *.js -d ../out",
+	  "test" : "npm run build; echo '';  node cli.js test/foo.js"
 	},
   "dependencies": {
     "async": "^0.9.0",

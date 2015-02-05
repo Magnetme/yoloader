@@ -3,16 +3,16 @@ let detective = require('detective');
 let combine = require('stream-combiner');
 let path = require('path');
 let {
-	asyncReduce,
 	binder,
 	invoke,
 	not,
-	maskFilter
+	maskFilter,
+	catcher
 } = require('./f');
 let async = require('async');
 let fs = require('fs');
 let util = require('util');
-
+let dependencyResolver = require('./dependencyResolver');
 
 //TODO:
 //- Extract entry files. either:
@@ -33,7 +33,7 @@ util.inherits(UserError, Error);
 function UnresolvedDependenciesError(file, dependencies) {
 	UserError.call(this);
 	Object.defineProperty(this, file, { value: file, enumerable : false });
-	//this.file = file;
+	this.file = file;
 	this.dependencies = dependencies;
 	let delimiter = '\n\t- ';
 	this.message =  'Could not resolve all dependencies for ' + this.file + '.\n\tMissing:  ' +
@@ -45,19 +45,6 @@ util.inherits(UnresolvedDependenciesError, UserError);
 UnresolvedDependenciesError.prototype.toString = function toString() {
 	return this.message;
 };
-
-
-function dependencyResolver(chunk, opts) {
-	return function resolveDependency(dep, done) {
-		asyncReduce(opts.resolvers, (result, resolver, index, arr, cb) => {
-			if (result) {
-				return cb(null, result);
-			} else {
-				resolver(chunk.vinyl.path, dep, opts, cb);
-			}
-		}, null, done);
-	};
-}
 
 let transformers = {
 	/**
@@ -87,28 +74,25 @@ let transformers = {
 	/**
 	 * Resolves dependencies.
 	 */
-	resolveDependencies : function(opts) {
+	resolveDependencies (opts) {
 		return through.obj(function resolveDependencies(chunk, enc, done) {
 			//Push the current file, we'll need that anyway
-			this.push(chunk);
+			let onSuccess = catcher(done);
 
 			//TODO: filter out requires that we're not going to resolve here
-			async.map(chunk.deps, dependencyResolver(chunk, opts), function (err, depPaths) {
-				if (err) {
-					return done(err);
-				}
+			async.map(chunk.deps, dependencyResolver(chunk, opts), onSuccess((depPaths) => {
+				//Check if we've found all
 				let unresolvedMask = depPaths.map(not);
 				let unresolved = chunk.deps.filter(maskFilter(unresolvedMask));
 				if (unresolved.length) {
 					return done(new UnresolvedDependenciesError(chunk.vinyl.path, unresolved));
 				}
 				//Note: atm we only have paths where the files should be, but no guarantees yet
-				async.map(depPaths, fs.readFile, (files) => {
-					console.log(files);
-					console.log(files.map(invoke({}.toString)));
-				});
+			 console.log(depPaths);
 			//	return done(null, depPaths);
-			});
+				this.push(chunk);
+			}));
+
 		});
 	}
 };
@@ -119,49 +103,14 @@ let pipeline = [transformers.wrapVinyl,
 	transformers.resolveDependencies,
 	transformers.unwrapVinyl];
 
-let pathResolvers = [
-	function relativeResolver(from, to, opts, cb) {
-		//Only deal with relative paths
-		if (to.indexOf('.') !== 0) {
-			return cb(null, false);
-		}
-		//Otherwise we can just let `path` deal with it
-		return cb(null, path.resolve(path.dirname(from), to));
-	},
-	function absoluteResolver(from, to, opts, cb) {
-		if (to.indexOf('/') !== 0) {
-			return cb(null, false);
-		}
-		console.warn('Warning: absolute require for file ' + to + '  found in ' + from + '. This is likely an error');
-		return cb(null, to);
-	},
-	//TODO: move this to somewhere else
-	//
-	function nodeModulesResolver(from, to, opts, cb) {
-		let basePath = from;
-		function next() {
-			if (basePath === '/') {
-				//Not found, so we can exit
-				return cb(null, false);
-			}
-			basePath = path.dirname(basePath);
-			let filePath = path.join(basePath, 'node_modules', to);
-			fs.exists(filePath, (exists) => {
-				if (exists) {
-					cb(null, filePath);
-				} else {
-					next();
-				}
-			});
-		}
-		next();
-	}
-];
+function createPipeline(opts) {
+	return pipeline.map(binder(opts)).map(invoke);
+}
 
 module.exports = (opts) => {
 	opts = opts || {};
-	opts.resolvers = opts.resolvers || pathResolvers;
-	var stream =  combine.apply(null, pipeline.map(binder(opts)).map(invoke));
+	opts.resolvers = opts.resolvers || dependencyResolver.defaultResolvers;
+	var stream =  combine.apply(null, createPipeline(opts));
 	return stream;
 };
 
