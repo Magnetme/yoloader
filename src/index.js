@@ -11,7 +11,7 @@ let {
 } = require('./f');
 let async = require('async');
 let fs = require('fs');
-let q = require('q');
+let util = require('util');
 
 
 //TODO:
@@ -25,20 +25,23 @@ let q = require('q');
 //	- Explicit via options
 //- Support for package.json as input file (via transformers?)
 
-function UserError(){
+function UserError() {
 	Error.call(this);
 }
-UserError.prototype = Object.create(Error);
+util.inherits(UserError, Error);
 
 function UnresolvedDependenciesError(file, dependencies) {
 	UserError.call(this);
-	this.file = file;
+	Object.defineProperty(this, file, { value: file, enumerable : false });
+	//this.file = file;
 	this.dependencies = dependencies;
 	let delimiter = '\n\t- ';
 	this.message =  'Could not resolve all dependencies for ' + this.file + '.\n\tMissing:  ' +
 	                delimiter + this.dependencies.join(delimiter);
 }
-UnresolvedDependenciesError.prototype = new UserError();
+util.inherits(UnresolvedDependenciesError, UserError);
+
+//UnresolvedDependenciesError.prototype = new UserError();
 UnresolvedDependenciesError.prototype.toString = function toString() {
 	return this.message;
 };
@@ -90,7 +93,7 @@ let transformers = {
 			this.push(chunk);
 
 			//TODO: filter out requires that we're not going to resolve here
-			async.map(chunk.deps, dependencyResolver(chunk, opts), (err, depPaths) => {
+			async.map(chunk.deps, dependencyResolver(chunk, opts), function (err, depPaths) {
 				if (err) {
 					return done(err);
 				}
@@ -158,6 +161,7 @@ let pathResolvers = [
 module.exports = (opts) => {
 	opts = opts || {};
 	opts.resolvers = opts.resolvers || pathResolvers;
-	return combine.apply(null, pipeline.map(binder(opts)).map(invoke));
+	var stream =  combine.apply(null, pipeline.map(binder(opts)).map(invoke));
+	return stream;
 };
 
