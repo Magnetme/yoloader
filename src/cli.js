@@ -8,6 +8,6 @@ entries.forEach((entry) => {
 	let entryPath = path.resolve(process.cwd(), entry);
 	fs.src(entryPath)
 		.pipe(common())
-		.pipe(fs.dest(__dirname + '/test/out'));
+		.pipe(fs.dest(process.cwd() + '/test/out'));
 });
 

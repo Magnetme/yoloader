@@ -7,12 +7,15 @@ let {
 	invoke,
 	not,
 	maskFilter,
-	catcher
+	catcher,
+	uniqFilter
 } = require('./f');
 let async = require('async');
 let fs = require('fs');
+let vinylFs = require('vinyl-fs');
 let util = require('util');
 let dependencyResolver = require('./dependencyResolver');
+var VinylFile = require('vinyl');
 
 //TODO:
 //- Extract entry files. either:
@@ -88,11 +91,49 @@ let transformers = {
 					return done(new UnresolvedDependenciesError(chunk.vinyl.path, unresolved));
 				}
 				//Note: atm we only have paths where the files should be, but no guarantees yet
-			 console.log(depPaths);
-			//	return done(null, depPaths);
+				depPaths = depPaths.filter(uniqFilter);
+				//Now recurse the shit
+				let outer = this;
+				let finish = done;
 				this.push(chunk);
+				if (depPaths.length) {
+					//Recursion FTW!
+					vinylFs.src(depPaths)
+						.pipe(combine(createPipeline(opts)))
+						.pipe(through.obj(function deps(chunk, enc, done) {
+							outer.push(chunk);
+							done(null, chunk);
+						}, () => { finish(); }));
+				} else {
+					finish();
+				}
+
 			}));
 
+		});
+	},
+
+	toJson (opts) {
+		let obj = {};
+		return through.obj(function toJson(chunk, enc, done) {
+			let targetObj = chunk.vinyl.path.split('/').reduce((obj, part) => {
+				if (!obj[part]) {
+					obj[part] = {};
+				}
+				return obj[part];
+			}, obj);
+			targetObj.content = chunk.vinyl.contents.toString();
+			targetObj.deps = chunk.deps;
+			done();
+		}, function finishJson() {
+			//TODO: actual cwd
+			var file = new VinylFile({
+				cwd : process.cwd(),
+				base : '/',
+				path : '/out.json',
+				contents : new Buffer(JSON.stringify(obj, null, '\t'))
+			});
+			this.push(file);
 		});
 	}
 };
@@ -100,8 +141,9 @@ let transformers = {
 
 let pipeline = [transformers.wrapVinyl,
 	transformers.attachDependencies,
-	transformers.resolveDependencies,
-	transformers.unwrapVinyl];
+	transformers.resolveDependencies
+];
+	//transformers.unwrapVinyl];
 
 function createPipeline(opts) {
 	return pipeline.map(binder(opts)).map(invoke);
@@ -111,6 +153,6 @@ module.exports = (opts) => {
 	opts = opts || {};
 	opts.resolvers = opts.resolvers || dependencyResolver.defaultResolvers;
 	var stream =  combine.apply(null, createPipeline(opts));
-	return stream;
+	return combine(stream, transformers.toJson(opts));
 };
 

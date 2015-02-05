@@ -64,6 +64,9 @@ module.exports = {
 				}
 			};
 		};
+	},
+	uniqFilter (item, index, arr) {
+		return arr.slice(0, index).indexOf(item) === -1;
 	}
 
 };

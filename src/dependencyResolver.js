@@ -1,3 +1,4 @@
+//TODO: all sorts of caching (at least to allow cyclic requires)
 let {
 	asyncReduce,
 	catcher
