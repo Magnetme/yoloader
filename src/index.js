@@ -19,18 +19,6 @@ let StreamConcat = require('stream-concat');
 let beautify = require('js-beautify');
 let bundleSerializer = require('./bundleSerializer');
 
-//TODO:
-//- Extract entry files. either:
-//	- With a transformer at the beginning of the pipeline
-//	- Manually via options (perhaps this is better, it's more flexible and allows for library-only code)
-//- Get basepath. Either:
-//	- Based on pwd
-//	- Based on entry files
-//	- Based on initial files
-//	- Explicit via options
-//- Support for package.json as input file (via transformers?)
-
-
 let transformers = {
 	/**
 	 * Wraps a vinyl stream in an object.
@@ -38,11 +26,14 @@ let transformers = {
 	 * The goal of this is to be able to pass additional data alongside the vinyl stream without
 	 * having to monkey patch the vinyl objects.
 	 */
-	wrapVinyl : through.obj.bind(null, (chunk, enc, done) => {
-		done(null, {
-			vinyl : chunk
+	wrapVinyl (opts) {
+		return through.obj((chunk, enc, done) => {
+			done(null, {
+				vinyl : chunk,
+				isEntry : opts.entries.indexOf(chunk.path) !== -1
+			});
 		});
-	}),
+	},
 	/**
 	 * Finds and attaches dependencies of a file
 	 */
@@ -74,7 +65,6 @@ let transformers = {
 				//TODO: this currently relies on the caching of `dependencyResolver`. Better would be to
 				//improve the uniqness filter.
 				depStreams = depStreams.filter(uniqFilter);
-
 				//at this point we can push the current file and recurse
 				this.push(chunk);
 				let outer = this;
@@ -131,7 +121,7 @@ let transformers = {
 		return through.obj(function toBundle(chunk, enc, done) {
 			let filePath = path.relative(chunk.vinyl.base, chunk.vinyl.path);
 			let packageName = getPackageNameFromPath(chunk.vinyl.base);
-			let filesObject = getPackageObject(packageName).files;
+			let packageObject = getPackageObject(packageName);
 			//We need to get hold of an object where we can place the content of the module.
 			//Since the bundle is structured as an object representation of a file system we need to
 			//walk through the bundle tree as if it was a file system.
@@ -147,7 +137,11 @@ let transformers = {
 						bundle[part] = {};
 					}
 					return bundle[part];
-				}, filesObject);
+				}, packageObject.files);
+
+			if (chunk.isEntry) {
+				packageObject.entry.push('./' + filePath);
+			}
 
 			//We've found our object, so we can place our info here
 			//We keep the vinyl stream as it is, such that the serializer can later transform that into
