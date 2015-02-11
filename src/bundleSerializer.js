@@ -92,7 +92,7 @@ function serializeThing(thing) {
  * @param {object} bundleObject An object representing a bundle.
  */
 function serializeBundle(bundleObject) {
-	let result = '(function(){require.register(';
+	let result = '(function(){require.load(';
 	result += serializeThing(bundleObject);
 	result += ');}());';
 	return result;

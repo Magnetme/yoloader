@@ -71,9 +71,9 @@ function existsAndIsFile(filePath, cb) {
 
 let fileCache = {};
 
-function toStream(file, base) {
+function toResultObject(file, base) {
 	if (!fileCache[file]) {
-		fileCache[file] = vinylFs.src(file, { base : base }) ;
+		fileCache[file] = { vinyl : vinylFs.src(file, { base : base }), path: file };
 	}
 
 	return fileCache[file];
@@ -91,11 +91,11 @@ function loadAsFile(from, to, opts, cb) {
 	let onSuccess = catcher(cb);
 	existsAndIsFile(filePath, onSuccess((found) => {
 		if (found) {
-			cb(null, toStream(found, opts.base));
+			cb(null, toResultObject(found, opts.base));
 		} else {
 			debug('Could not find ' + filePath + ', trying ' + filePath + '.js');
 			existsAndIsFile(filePath + '.js', onSuccess((file) => {
-				cb(null, file && toStream(file, opts.base));
+				cb(null, file && toResultObject(file, opts.base));
 			}));
 		}
 	}));
@@ -153,7 +153,7 @@ function loadFromFolderIndex(from, to, opts, cb) {
 	fs.exists(indexPath, (exists) => {
 		if (exists) {
 			debug(indexPath + ' found');
-			return cb(null, toStream(indexPath, opts.base));
+			return cb(null, toResultObject(indexPath, opts.base));
 		} else {
 			debug(indexPath + ' not found');
 			return cb(null, false);

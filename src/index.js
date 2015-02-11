@@ -18,6 +18,8 @@ let VinylFile = require('vinyl');
 let StreamConcat = require('stream-concat');
 let beautify = require('js-beautify');
 let bundleSerializer = require('./bundleSerializer');
+//TODO: check if we might add constructors to the bundle.
+//Constructors will help us to mark objects in the tree with a type, such that we can more easily mix stuff there.
 
 let transformers = {
 	/**
@@ -50,23 +52,31 @@ let transformers = {
 			let onSuccess = catcher(done);
 
 			//TODO: filter out requires that we're not going to resolve here
-			async.map(chunk.deps, dependencyResolver(chunk, opts), onSuccess((depStreams) => {
+			async.map(chunk.deps, dependencyResolver(chunk, opts), onSuccess((deps) => {
 				//Check if we've found all dependencies:
 				//At this point depStreams should be an array of streams, but any dependency that could
 				//not be resolved will have a falsy value instead. By applying a not operation to the
 				//entire array we are left over with a mask that can filter out the unresolved files.
 				//So that's exactly what we're going to do here.
-				let unresolvedMask = depStreams.map(not);
+				let unresolvedMask = deps.map(not);
 				let unresolved = chunk.deps.filter(maskFilter(unresolvedMask));
 				if (unresolved.length) {
 					return done(new UnresolvedDependenciesError(chunk.vinyl.path, unresolved));
 				}
 
-				//TODO: this currently relies on the caching of `dependencyResolver`. Better would be to
-				//improve the uniqness filter.
-				depStreams = depStreams.filter(uniqFilter);
+				//Now we're going to replace the string based deps by objects with a mapping of require name
+				//to their relative path
+				let oldDeps = chunk.deps;
+				chunk.deps = {};
+				oldDeps.forEach((dep, index) => {
+					//TODO: don't always prefix with ./, it's not always needed
+					chunk.deps[dep] = './' + path.relative(path.dirname(chunk.vinyl.path), deps[index].path);
+				});
 				//at this point we can push the current file and recurse
 				this.push(chunk);
+				//TODO: this currently relies on the caching of `dependencyResolver`. Better would be to
+				//improve the uniqness filter.
+				let depStreams = deps.map((dep) => dep.vinyl).filter(uniqFilter);
 				let outer = this;
 				if (depStreams.length) {
 					//We concatinate the streams and pipe them through the rest of the pipeline
