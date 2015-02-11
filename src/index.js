@@ -13,11 +13,11 @@ let {
 let async = require('async');
 let fs = require('fs');
 let vinylFs = require('vinyl-fs');
-let util = require('util');
 let dependencyResolver = require('./dependencyResolver');
 let VinylFile = require('vinyl');
 let StreamConcat = require('stream-concat');
 let beautify = require('js-beautify');
+let bundleSerializer = require('./bundleSerializer');
 
 //TODO:
 //- Extract entry files. either:
@@ -30,26 +30,6 @@ let beautify = require('js-beautify');
 //	- Explicit via options
 //- Support for package.json as input file (via transformers?)
 
-function UserError() {
-	Error.call(this);
-}
-util.inherits(UserError, Error);
-
-function UnresolvedDependenciesError(file, dependencies) {
-	UserError.call(this);
-	Object.defineProperty(this, file, { value: file, enumerable : false });
-	this.file = file;
-	this.dependencies = dependencies;
-	let delimiter = '\n\t- ';
-	this.message =  'Could not resolve all dependencies for ' + this.file + '.\n\tMissing:  ' +
-	                delimiter + this.dependencies.join(delimiter);
-}
-util.inherits(UnresolvedDependenciesError, UserError);
-
-//UnresolvedDependenciesError.prototype = new UserError();
-UnresolvedDependenciesError.prototype.toString = function toString() {
-	return this.message;
-};
 
 let transformers = {
 	/**
@@ -80,29 +60,36 @@ let transformers = {
 
 			//TODO: filter out requires that we're not going to resolve here
 			async.map(chunk.deps, dependencyResolver(chunk, opts), onSuccess((depStreams) => {
-				//Check if we've found all
+				//Check if we've found all dependencies:
+				//At this point depStreams should be an array of streams, but any dependency that could
+				//not be resolved will have a falsy value instead. By applying a not operation to the
+				//entire array we are left over with a mask that can filter out the unresolved files.
+				//So that's exactly what we're going to do here.
 				let unresolvedMask = depStreams.map(not);
 				let unresolved = chunk.deps.filter(maskFilter(unresolvedMask));
 				if (unresolved.length) {
 					return done(new UnresolvedDependenciesError(chunk.vinyl.path, unresolved));
 				}
-				//Note: atm we only have paths where the files should be, but no guarantees yet
+
+				//TODO: this currently relies on the caching of `dependencyResolver`. Better would be to
+				//improve the uniqness filter.
 				depStreams = depStreams.filter(uniqFilter);
-				//Now recurse the shit
-				let outer = this;
-				let finish = done;
+
+				//at this point we can push the current file and recurse
 				this.push(chunk);
+				let outer = this;
 				if (depStreams.length) {
-					//Recursion FTW!
-//					vinylFs.src(depPaths)
+					//We concatinate the streams and pipe them through the rest of the pipeline
 					new StreamConcat(depStreams, { objectMode : true })
 						.pipe(combine(createPipeline(pipeline, opts)))
-						.pipe(through.obj(function deps(chunk, enc, done) {
+						.pipe(through.obj(function deps(chunk, enc, cb) {
+							//Each file found in the recursive step will also be pushed to the outer stream to
+							//collect all files together
 							outer.push(chunk);
-							done(null, chunk);
-						}, () => { finish(); }));
+							cb(null, chunk);
+						}, () => { done(); }));
 				} else {
-					finish();
+					done();
 				}
 
 			}));
@@ -110,138 +97,79 @@ let transformers = {
 		});
 	},
 
+	/**
+	 * Bundles all streams together into one bundle object.
+	 */
 	bundleStream (opts) {
-		let obj = {};
-		return through.obj(function toJson(chunk, enc, done) {
-			function getModuleObj(moduleName) {
-				if (!obj[moduleName]) {
-					obj[moduleName] = {
-						files : {},
-						path : [],
-						entry : []
-					};
-				}
-				return obj[moduleName];
+		let bundle = {};
+		/**
+		 * Gets (or creates) an object for a package.
+		 *
+		 * The object returned will be already created in the bundle object, so anything placed here
+		 * will end up in the bundle.
+		 */
+		function getPackageObject(packageName) {
+			if (!bundle[packageName]) {
+				bundle[packageName] = {
+					files : {},
+					path : [],
+					entry : []
+				};
 			}
-			function getModuleNameFromPath(filePath) {
-				return path.basename(filePath);
-			}
-			/*
-			let filePath = chunk.vinyl.path;
-			if (filePath.indexOf(opts.basePath) === 0) {
-				filePath = filePath.substr(opts.basePath.length);
-			}
-			//TODO: configure modulename
-			let moduleName = path.basename(opts.basePath);
-			obj[moduleName] = obj[moduleName] || {
-				files : {},
-				//TODO: fix path and entry
-				path : [],
-				entry : []
-			};
-			*/
+			return bundle[packageName];
+		}
+		/**
+		 * Returns the name of a package based on it's path.
+		 *
+		 * For now it just implements path.basename, but in the future it might do something more intelligent,
+		 * like searching for the package.json.
+		 */
+		function getPackageNameFromPath(filePath) {
+			return path.basename(filePath);
+		}
+		//We'll bundle all the individual stream items into one object here
+		return through.obj(function toBundle(chunk, enc, done) {
 			let filePath = path.relative(chunk.vinyl.base, chunk.vinyl.path);
-			let targetObj = filePath.split('/').filter((x) => x).reduce((obj, part) => {
-				if (!obj[part]) {
-					obj[part] = {};
-				}
-				return obj[part];
-			}, getModuleObj(getModuleNameFromPath(chunk.vinyl.base)).files);
-			/* jshint evil:true */
-			targetObj.content = chunk.vinyl;
-			/* jshint evil:false */
-			targetObj.deps = chunk.deps;
+			let packageName = getPackageNameFromPath(chunk.vinyl.base);
+			let filesObject = getPackageObject(packageName).files;
+			//We need to get hold of an object where we can place the content of the module.
+			//Since the bundle is structured as an object representation of a file system we need to
+			//walk through the bundle tree as if it was a file system.
+			//With a combination of split and reduce we can walk through the bundle tree, creating path
+			//entries on the fly, and finally end up at the object we're interested in.
+			let target = filePath
+				.split('/')
+				//leading or trailing slashes will leave empty strings, so we use an identity function to
+				//filter those out.
+				.filter((x) => x)
+				.reduce((bundle, part) => {
+					if (!bundle[part]) {
+						bundle[part] = {};
+					}
+					return bundle[part];
+				}, filesObject);
+
+			//We've found our object, so we can place our info here
+			//We keep the vinyl stream as it is, such that the serializer can later transform that into
+			//an actual function
+			target.content = chunk.vinyl;
+			target.deps = chunk.deps;
 			done();
-		}, function finishJson() {
-			//TODO: actual cwd
-			/*
-			var file = new VinylFile({
-				cwd : process.cwd(),
-				base : '/',
-				path : '/out.json',
-				contents : new Buffer(JSON.stringify(obj, null, '\t'))
-			});
-			*/
-			this.push(obj);
+		}, function finalizeBundle() { //NOTE: don't use arrow functions here, it binds this and messes stuff up
+			this.push(bundle);
 		});
 	},
+	/**
+	 * Serializes a bundle object into a js file
+	 */
 	serialize (opts) {
 		return through.obj(function serialize(chunk, enc, done) {
-			//We need to serialize the object including functions, so we can't use JSON.stringify.
-			//Therefore, custom serialization. It delegates to JSON.stringify for primitives, and
-			//implements serialization for arrays, objects and the vinyl objects itself
-			//It doesn't do any formatting though, that can be done
-
-			//TODO: move serialization code
-
-			/**
-			 * Check if an object is a vinyl object.
-			 *
-			 * Currently it's done a bit cracky, it just checks if the expected properties are set.
-			 * However, that's sufficient for now
-			 */
-			function isVinyl(obj) {
-				return (obj.cwd !== undefined &&
-				        obj.base !== undefined &&
-				        obj.path !== undefined &&
-				        obj.contents !== undefined);
-			}
-
-			function serializeThing(thing) {
-				let serializer;
-				if (thing instanceof Array) {
-					serializer = serializeArray;
-				} else if (thing instanceof Object && isVinyl(thing)) {
-					serializer = serializeModule;
-				} else if (thing instanceof Object) {
-					serializer = serializeObject;
-				} else {
-					serializer = JSON.stringify;
-				}
-				return serializer(thing);
-			}
-
-			function serializeModule(module) {
-				let res = 'function(require,module,exports){';
-				res += module.contents.toString();
-				res += '}';
-				return res;
-			}
-
-			function serializeArray(arr) {
-				let res = '[';
-
-				res += arr
-					.map((item) => {
-						return serializeThing(item);
-					})
-					.join(',');
-
-				res += ']';
-				return res;
-			}
-
-			function serializeObject(obj) {
-				let res = '{';
-				//We only want the own enumerable properties, so we use Object.keys to get all those keys
-				res += Object.keys(obj)
-					.map((key) => {
-						//Just in case we stringify the key. This should always result in a quoted string, which then
-						//can be used as the key in an object. (not every unquoted string is a valid identifier)
-						return JSON.stringify(key) + ':' + serializeThing(obj[key]);
-					})
-					.join(',');
-
-				res += '}';
-				return res;
-			}
-
-			let result = '(function(){require.register(';
-			result += serializeThing(chunk);
-			result += ');}());';
-			done(null, result);
+			done(null, bundleSerializer(chunk));
 		});
 	},
+	/**
+	 * Beautifies a javascript object if debug is set
+	 */
 	beautify (opts) {
 		if (!opts.debug) {
 			return through.obj();
@@ -252,16 +180,33 @@ let transformers = {
 			});
 		}
 	},
+	/**
+	 * Transforms a simple stream into a vinyl object.
+	 */
 	createVinylStream (opts) {
 		return through.obj(function createVinylStream(chunk, enc, done) {
 			done(null, new VinylFile({ contents : new Buffer(chunk) }));
 		});
 	},
+	/**
+	 * Collects all files passed through the transformer into the entries array of the options.
+	 *
+	 * This should be placed at the beginning of the pipeline, such that all files initially passed
+	 * to it will be marked as entry files.
+	 *
+	 * If entries is already manually provided a no-op transformer will be returned, such that the
+	 * user can overwrite the default behaviour easily.
+	 */
 	collectEntries (opts) {
-		return through.obj((chunk, enc, done) => {
-			opts.entries.push(chunk.path);
-			done(null, chunk);
-		});
+		if (opts.entries) {
+			return through.obj();
+		} else {
+			opts.entries = [];
+			return through.obj((chunk, enc, done) => {
+				opts.entries.push(chunk.path);
+				done(null, chunk);
+			});
+		}
 	}
 };
 
@@ -288,7 +233,6 @@ function createPipeline(transformers, opts) {
 
 module.exports = (opts) => {
 	opts = opts || {};
-	opts.entries = [];
 	//TODO: better basepath
 	opts.basePath = opts.basePath || process.cwd();
 	opts.resolvers = opts.resolvers || dependencyResolver.defaultResolvers;
