@@ -235,7 +235,11 @@ let transformers = {
 				res += '}';
 				return res;
 			}
-			done(null, serializeThing(chunk));
+
+			let result = '(function(){require.register(';
+			result += serializeThing(chunk);
+			result += ');}());';
+			done(null, result);
 		});
 	},
 	beautify (opts) {
