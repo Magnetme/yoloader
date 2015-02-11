@@ -1,23 +1,32 @@
 //TODO: all sorts of caching (at least to allow cyclic requires)
+//TODO: Do base paths in a better way, it's a bit fragile now
+//TODO: Check if upwards paths (../) work with vinyl
 let {
 	asyncReduce,
 	catcher
 } = require('./f');
 let path = require('path');
 let fs = require('fs');
+let vinylFs = require('vinyl-fs');
 let debug = require('debug')('common:resolve');
+
 
 /**
  * Resolves the dependencies for a file to full file paths
  */
-module.exports = function dependencyResolver(chunk, opts) {
+module.exports = function dependencyResolver(chunk, compileOptions) {
 	debug('Creating dependency resolver for ' + chunk.vinyl.path);
 	return function resolveDependency(dep, done) {
 		debug('Resolving dependency from ' + chunk.vinyl.path + ' to ' + dep);
-		asyncReduce(opts.resolvers, (result, resolver, index, arr, cb) => {
+		asyncReduce(compileOptions.resolvers, (result, resolver, index, arr, cb) => {
 			if (result) {
 				cb(null, result);
 			} else {
+				let opts = {
+					compileOptions : compileOptions,
+					stream : chunk,
+					base : chunk.vinyl.base
+				};
 				resolver(chunk.vinyl.path, dep, opts, cb);
 			}
 		}, null, done);
@@ -60,6 +69,16 @@ function existsAndIsFile(filePath, cb) {
 	});
 }
 
+let fileCache = {};
+
+function toStream(file, base) {
+	if (!fileCache[file]) {
+		fileCache[file] = vinylFs.src(file, { base : base }) ;
+	}
+
+	return fileCache[file];
+}
+
 /**
  * Loads a dependency as normal file
  */
@@ -72,10 +91,12 @@ function loadAsFile(from, to, opts, cb) {
 	let onSuccess = catcher(cb);
 	existsAndIsFile(filePath, onSuccess((found) => {
 		if (found) {
-			cb(null, found);
+			cb(null, toStream(found, opts.base));
 		} else {
 			debug('Could not find ' + filePath + ', trying ' + filePath + '.js');
-			existsAndIsFile(filePath + '.js', cb);
+			existsAndIsFile(filePath + '.js', onSuccess((file) => {
+				cb(null, file && toStream(file, opts.base));
+			}));
 		}
 	}));
 }
@@ -132,7 +153,7 @@ function loadFromFolderIndex(from, to, opts, cb) {
 	fs.exists(indexPath, (exists) => {
 		if (exists) {
 			debug(indexPath + ' found');
-			return cb(null, indexPath);
+			return cb(null, toStream(indexPath, opts.base));
 		} else {
 			debug(indexPath + ' not found');
 			return cb(null, false);

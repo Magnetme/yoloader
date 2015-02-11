@@ -17,6 +17,7 @@
     "vinyl": "^0.4.6"
   },
   "devDependencies": {
-    "6to5": "^3.3.12"
+    "6to5": "^3.3.12",
+    "stream-concat": "^0.1.0"
   }
 }

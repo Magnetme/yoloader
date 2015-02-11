@@ -15,7 +15,8 @@ let fs = require('fs');
 let vinylFs = require('vinyl-fs');
 let util = require('util');
 let dependencyResolver = require('./dependencyResolver');
-var VinylFile = require('vinyl');
+let VinylFile = require('vinyl');
+let StreamConcat = require('stream-concat');
 
 //TODO:
 //- Extract entry files. either:
@@ -62,12 +63,6 @@ let transformers = {
 		});
 	}),
 	/**
-	 * Unwraps a wrapped vinyl stream
-	 */
-	unwrapVinyl : through.obj.bind(null, (chunk, enc, done) => {
-		done(null, chunk.vinyl);
-	}),
-	/**
 	 * Finds and attaches dependencies of a file
 	 */
 	attachDependencies : through.obj.bind(null, (chunk, enc, done) => {
@@ -83,23 +78,24 @@ let transformers = {
 			let onSuccess = catcher(done);
 
 			//TODO: filter out requires that we're not going to resolve here
-			async.map(chunk.deps, dependencyResolver(chunk, opts), onSuccess((depPaths) => {
+			async.map(chunk.deps, dependencyResolver(chunk, opts), onSuccess((depStreams) => {
 				//Check if we've found all
-				let unresolvedMask = depPaths.map(not);
+				let unresolvedMask = depStreams.map(not);
 				let unresolved = chunk.deps.filter(maskFilter(unresolvedMask));
 				if (unresolved.length) {
 					return done(new UnresolvedDependenciesError(chunk.vinyl.path, unresolved));
 				}
 				//Note: atm we only have paths where the files should be, but no guarantees yet
-				depPaths = depPaths.filter(uniqFilter);
+				depStreams = depStreams.filter(uniqFilter);
 				//Now recurse the shit
 				let outer = this;
 				let finish = done;
 				this.push(chunk);
-				if (depPaths.length) {
+				if (depStreams.length) {
 					//Recursion FTW!
-					vinylFs.src(depPaths)
-						.pipe(combine(createPipeline(opts)))
+//					vinylFs.src(depPaths)
+					new StreamConcat(depStreams, { objectMode : true })
+						.pipe(combine(createPipeline(pipeline, opts)))
 						.pipe(through.obj(function deps(chunk, enc, done) {
 							outer.push(chunk);
 							done(null, chunk);
@@ -116,13 +112,44 @@ let transformers = {
 	toJson (opts) {
 		let obj = {};
 		return through.obj(function toJson(chunk, enc, done) {
-			let targetObj = chunk.vinyl.path.split('/').reduce((obj, part) => {
+			function getModuleObj(moduleName) {
+				if (!obj[moduleName]) {
+					obj[moduleName] = {
+						files : {},
+						path : [],
+						entry : []
+					};
+				}
+				return obj[moduleName];
+			}
+			function getModuleNameFromPath(filePath) {
+				return path.basename(filePath);
+			}
+			/*
+			let filePath = chunk.vinyl.path;
+			if (filePath.indexOf(opts.basePath) === 0) {
+				filePath = filePath.substr(opts.basePath.length);
+			}
+			//TODO: configure modulename
+			let moduleName = path.basename(opts.basePath);
+			obj[moduleName] = obj[moduleName] || {
+				files : {},
+				//TODO: fix path and entry
+				path : [],
+				entry : []
+			};
+			*/
+			let filePath = path.relative(chunk.vinyl.base, chunk.vinyl.path);
+			console.log(filePath);
+			let targetObj = filePath.split('/').filter((x) => x).reduce((obj, part) => {
 				if (!obj[part]) {
 					obj[part] = {};
 				}
 				return obj[part];
-			}, obj);
+			}, getModuleObj(getModuleNameFromPath(chunk.vinyl.base)).files);
+			/* jshint evil:true */
 			targetObj.content = chunk.vinyl.contents.toString();
+			/* jshint evil:false */
 			targetObj.deps = chunk.deps;
 			done();
 		}, function finishJson() {
@@ -135,24 +162,39 @@ let transformers = {
 			});
 			this.push(file);
 		});
+	},
+	collectEntries (opts) {
+		return through.obj((chunk, enc, done) => {
+			opts.entries.push(chunk.path);
+			done(null, chunk);
+		});
 	}
 };
 
+let setup = [
+	transformers.collectEntries
+];
 
 let pipeline = [transformers.wrapVinyl,
 	transformers.attachDependencies,
 	transformers.resolveDependencies
 ];
-	//transformers.unwrapVinyl];
 
-function createPipeline(opts) {
-	return pipeline.map(binder(opts)).map(invoke);
+let finalize = [
+	transformers.toJson
+];
+
+function createPipeline(transformers, opts) {
+	return transformers.map(binder(opts)).map(invoke);
 }
+
 
 module.exports = (opts) => {
 	opts = opts || {};
+	opts.entries = [];
+	//TODO: better basepath
+	opts.basePath = opts.basePath || process.cwd();
 	opts.resolvers = opts.resolvers || dependencyResolver.defaultResolvers;
-	var stream =  combine.apply(null, createPipeline(opts));
-	return combine(stream, transformers.toJson(opts));
+	return combine(createPipeline(setup.concat(pipeline, finalize), opts));
 };
 
