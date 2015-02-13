@@ -67,6 +67,27 @@ module.exports = {
 	},
 	uniqFilter (item, index, arr) {
 		return arr.slice(0, index).indexOf(item) === -1;
+	},
+	/**
+	 * Returns all values of an object
+	 */
+	values (obj) {
+		let values = [];
+		for (let key in obj) {
+			values.push(obj[key]);
+		}
+		return values;
+	},
+	/**
+	 * Creates a getter function that accepts an object and returns a predefined property.
+	 *
+	 * @param {String} prop The name of the property that the getter function should get from it's input object.
+	 * @return {Function} A getter function that takes an object `o` as input and returns `o[prop]`
+	 */
+	getter (prop) {
+		return function(obj) {
+			return obj[prop];
+		};
 	}
 
 };

@@ -8,7 +8,9 @@ let {
 	not,
 	maskFilter,
 	catcher,
-	uniqFilter
+	uniqFilter,
+	values,
+	getter
 } = require('./f');
 let async = require('async');
 let fs = require('fs');
@@ -18,6 +20,8 @@ let VinylFile = require('vinyl');
 let StreamConcat = require('stream-concat');
 let beautify = require('js-beautify');
 let bundleSerializer = require('./bundleSerializer');
+let countDownLatch = require('./countDownLatch');
+
 //TODO: check if we might add constructors to the bundle.
 //Constructors will help us to mark objects in the tree with a type, such that we can more easily mix stuff there.
 //TODO: search paths. When doing this we need to maintain a list of already loaded modules with their absolute path.
@@ -41,7 +45,10 @@ let transformers = {
 	 * Finds and attaches dependencies of a file
 	 */
 	findDependencies : through.obj.bind(null, (chunk, enc, done) => {
-		chunk.deps = detective(chunk.vinyl.contents.toString());
+		chunk.deps = {};
+		detective(chunk.vinyl.contents.toString())
+			//For now all dependencies will have value null since they're not resolved yet
+			.forEach((dep) => chunk.deps[dep] = null );
 		done(null, chunk);
 	}),
 	/**
@@ -52,50 +59,75 @@ let transformers = {
 			//Push the current file, we'll need that anyway
 			let onSuccess = catcher(done);
 
+			let deps = Object.keys(chunk.deps);
+
 			//TODO: filter out requires that we're not going to resolve here
-			async.map(chunk.deps, dependencyResolver(chunk, instance.options), onSuccess((deps) => {
+			async.map(deps, dependencyResolver(chunk, instance.options), onSuccess((resolvedDeps) => {
 				//Check if we've found all dependencies:
-				//At this point depStreams should be an array of streams, but any dependency that could
+				//At this point resolvedDeps should be an array of objects, but any dependency that could
 				//not be resolved will have a falsy value instead. By applying a not operation to the
 				//entire array we are left over with a mask that can filter out the unresolved files.
 				//So that's exactly what we're going to do here.
-				let unresolvedMask = deps.map(not);
-				let unresolved = chunk.deps.filter(maskFilter(unresolvedMask));
+				let unresolvedMask = resolvedDeps.map(not);
+				let unresolved = deps.filter(maskFilter(unresolvedMask));
 				if (unresolved.length) {
 					return done(new UnresolvedDependenciesError(chunk.vinyl.path, unresolved));
 				}
 
-				//Now we're going to replace the string based deps by objects with a mapping of require name
-				//to their relative path
-				let oldDeps = chunk.deps;
-				chunk.deps = {};
-				oldDeps.forEach((dep, index) => {
-					//TODO: don't always prefix with ./, it's not always needed
-					chunk.deps[dep] = './' + path.relative(path.dirname(chunk.vinyl.path), deps[index].path);
+				//Now we can attach the dependency objects to the chunk.deps object.
+				resolvedDeps.forEach((dep, index) => {
+					let depName = deps[index];
+					chunk.deps[depName] = dep;
 				});
-				//at this point we can push the current file and recurse
-				this.push(chunk);
-				//TODO: this currently relies on the caching of `dependencyResolver`. Better would be to
-				//improve the uniqness filter.
-				let depStreams = deps.map((dep) => dep.vinyl).filter(uniqFilter);
-				let outer = this;
-				if (depStreams.length) {
-					//We concatinate the streams and pipe them through the rest of the pipeline
-					instance.compiler(new StreamConcat(depStreams, { objectMode : true }), instance)
-					//TODO: either remove this line or reintroduce it
-						//.pipe(combine(createPipeline(pipeline, opts)))
-						.pipe(through.obj(function deps(chunk, enc, cb) {
-							//Each file found in the recursive step will also be pushed to the outer stream to
-							//collect all files together
-							outer.push(chunk);
-							cb(null, chunk);
-						}, () => { done(); }));
-				} else {
-					done();
-				}
+
+				done(null, chunk);
 			}));
 		});
 	},
+	compileDependencies (instance) {
+		return through.obj(function (chunk, enc, done) {
+
+			let outer = this;
+			//We don't want to compile the same file twice, so we remove those that we've seen already
+			//here, and additionally we update the filesSeen list
+			let newFiles = values(chunk.deps)
+				.filter((dep) => instance.filesSeen.indexOf(dep.path) === -1);
+			instance.filesSeen.concat(newFiles.map((file) => file.path));
+
+			let streams = newFiles
+				.map(getter('vinyl'));
+
+			//Note: we can only push the chunk when we're done with it's properties: as soon as the chunk
+			//is pushed it will be piped trough the rest of the pipeline, which might alter the object.
+			this.push(chunk);
+			let latch = countDownLatch(streams.length, () =>  done());
+			streams.forEach((stream) => {
+				instance.compiler(stream, instance)
+					.pipe(through.obj(function(chunk, enc, cb) {
+						outer.push(chunk);
+						cb(null, chunk);
+						//this currently assumes that each stream has exactly one file, and should be improved
+						//Unfortunatally it somehow didn't work when the countDown call was done in the flush
+						//function, the flush function was just never called.
+						latch.countDown();
+					}));
+			});
+		});
+	},
+	/**
+	 * Resolves the require paths to links to actual files in the bundle.
+	 */
+	linkDependencies (instance) {
+		return through.obj(function (chunk, enc, done) {
+			Object.keys(chunk.deps)
+				.forEach((depName) =>  {
+					let dep = chunk.deps[depName];
+					chunk.deps[depName] = './' + path.relative(path.dirname(chunk.vinyl.path), dep.path);
+				});
+			done(null, chunk);
+		});
+	},
+
 
 	/**
 	 * Bundles all streams together into one bundle object.
@@ -158,9 +190,10 @@ let transformers = {
 			//an actual function
 			target.content = chunk.vinyl;
 			target.deps = chunk.deps;
-			done();
-		}, function finalizeBundle() { //NOTE: don't use arrow functions here, it binds this and messes stuff up
+			done(null, {});
+		}, function finalizeBundle(cb) { //NOTE: don't use arrow functions here, it binds this and messes stuff up
 			this.push(bundle);
+			cb();
 		});
 	},
 	/**
@@ -198,10 +231,12 @@ let transformers = {
 //TODO: rename
 let pipeline = [transformers.wrapVinyl,
 	transformers.findDependencies,
-	transformers.resolveDependencies
+	transformers.resolveDependencies,
+	transformers.compileDependencies
 ];
 
 let finalize = [
+	transformers.linkDependencies,
 	transformers.bundleStream,
 	transformers.serialize,
 	transformers.beautify,
@@ -230,6 +265,7 @@ class Common {
 		this.compiler = options.compiler || defaultCompiler;
 		this.dependencyProcessor = options.dependencyProcessor || defaultDependencyProcessor;
 		this.bundler = options.bundler || defaultBundler;
+		this.filesSeen = [];
 
 		this.options = options;
 	}
