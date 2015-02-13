@@ -29,7 +29,7 @@
 		//and then recursively applying each part on the current path. We'll end up with an array of
 		//path parts, which we can use to walk through the package to find the correct object
 		let targetPath = file.split('/');
-		if (targetPath[0] === '.' || targetPath[0] === '..') {
+		if (targetPath[0] === '.') {
 			targetPath = targetPath.reduce((current, nextPart) => {
 				//Current folder
 				if (nextPart === '.') {
@@ -44,12 +44,24 @@
 			}, currentPath);
 			//Walking through the package to get the definition
 			let fileDef = targetPath.reduce((current, next) => {
-				return current[next];
+				return current && current[next];
 			}, pkg.files);
-			// We return both the file definition and it's path
-			return { fileDef, filePath : targetPath.join('/') };
+			if (fileDef) {
+				// We return both the file definition and it's path
+				return { fileDef, filePath : targetPath.join('/') };
+			}
+		} else if (targetPath[0] === '/') {
+			throw new Error("Absolute paths not yet implemented");
 		} else {
-			//TODO: non-relative requires
+			//Non absolute, non relative = require from path entry.
+			//
+			let fileDef = file.split('/').reduce((current, next) => {
+				return current && current[next];
+			}, pkg.pathFiles);
+			if (fileDef) {
+				return { fileDef, filePath : file };
+			}
+
 		}
 		//Oh oh..
 		throw new Error("Could not find file " + file + " from " + current);
@@ -72,11 +84,11 @@
 				deps[key] = findFileDefinition(pkg, dep, filePath);
 			});
 		//Now it's just wrapping up: build the require function and the module.exports object and we're done
-		function localRequire(module) {
-			if (!module) {
-				throw new Error("Could not resolve " + module + " from " + filePath);
+		function localRequire(file) {
+			if (!deps[file]) {
+				throw new Error("Could not resolve " + file + " from " + filePath);
 			}
-			return loadFromDefinition(pkg, deps[module]);
+			return loadFromDefinition(pkg, deps[file]);
 		}
 		let module = {
 			exports : {}

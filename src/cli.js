@@ -5,7 +5,7 @@ let through = require('through2');
 
 let entries = process.argv.slice(2);
 
-let common = new Common({ compiler : compile, debug : true });
+let common = new Common({ compiler : compile, debug : true, path : [process.cwd() + '/test/p', process.cwd()] });
 
 //(NOTE: this should be default compiler)
 function compile(stream, common) {

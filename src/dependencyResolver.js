@@ -32,6 +32,7 @@ module.exports = function dependencyResolver(chunk, compileOptions = {}) {
 				resolver(chunk.vinyl.path, dep, opts, cb);
 			}
 		}, null, done);
+		//TODO: add timeout to detect non-finishing resolvers
 	};
 };
 
@@ -209,10 +210,28 @@ function loadFromNodeModules(from, to, opts, cb) {
 	}
 	next();
 }
+/**
+ * Resolves files from the path variable
+ */
+function loadFromPath(from, to, opts, done) {
+	if (to.indexOf('.') === 0 || to.indexOf('/') === 0) {
+		return done(null, false);
+	}
+	asyncReduce(opts.compileOptions.path, (result, pathItem, index, compilePath, cb) => {
+		if (result) {
+			return cb(null, result);
+		} else {
+			let filePath = path.join(pathItem, to);
+			debug('Trying to load ' + filePath + ' as node_module');
+			loadAsModule(filePath, opts, cb);
+		}
+	}, null, done);
+}
 
 module.exports.defaultResolvers = [
 	loadAsFile,
 	loadFromPackageJson,
 	loadFromFolderIndex,
-	loadFromNodeModules
+	loadFromNodeModules,
+	loadFromPath
 ];

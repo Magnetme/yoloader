@@ -1,3 +1,4 @@
+require('6to5/polyfill');
 let through = require('through2');
 let detective = require('detective');
 let combine = require('stream-combiner');
@@ -21,6 +22,7 @@ let StreamConcat = require('stream-concat');
 let beautify = require('js-beautify');
 let bundleSerializer = require('./bundleSerializer');
 let countDownLatch = require('./countDownLatch');
+let UnresolvedDependenciesError = require('./errors/UnresolvedDependenciesError');
 
 //TODO: check if we might add constructors to the bundle.
 //Constructors will help us to mark objects in the tree with a type, such that we can more easily mix stuff there.
@@ -41,6 +43,7 @@ let transformers = {
 			});
 		});
 	},
+
 	/**
 	 * Finds and attaches dependencies of a file
 	 */
@@ -51,6 +54,7 @@ let transformers = {
 			.forEach((dep) => chunk.deps[dep] = null );
 		done(null, chunk);
 	}),
+
 	/**
 	 * Resolves dependencies and adds them to the stream
 	 */
@@ -84,6 +88,7 @@ let transformers = {
 			}));
 		});
 	},
+
 	compileDependencies (instance) {
 		return through.obj(function (chunk, enc, done) {
 
@@ -114,6 +119,7 @@ let transformers = {
 			});
 		});
 	},
+
 	/**
 	 * Resolves the require paths to links to actual files in the bundle.
 	 */
@@ -122,12 +128,23 @@ let transformers = {
 			Object.keys(chunk.deps)
 				.forEach((depName) =>  {
 					let dep = chunk.deps[depName];
-					chunk.deps[depName] = './' + path.relative(path.dirname(chunk.vinyl.path), dep.path);
+					//If the dependency is in the same module as the file that requires it we can just
+					//use a relative require. Otherwise we'll have to try a path-require or an external require
+					if (dep.path.startsWith(chunk.vinyl.base)) {
+						chunk.deps[depName] = './' + path.relative(path.dirname(chunk.vinyl.path), dep.path);
+					} else {
+						let pathIndex = instance.options.path.findIndex((pathEntry) => {
+							return chunk.vinyl.path.startsWith(pathEntry);
+						});
+						if (pathIndex === -1) {
+							throw new Error("Could not find the base module for " + chunk.vinyl.path);
+						}
+						chunk.deps[depName] = pathIndex + '/' + path.relative(instance.options.path[pathIndex], dep.path);
+					}
 				});
 			done(null, chunk);
 		});
 	},
-
 
 	/**
 	 * Bundles all streams together into one bundle object.
@@ -145,7 +162,8 @@ let transformers = {
 				bundle[packageName] = {
 					files : {},
 					path : [],
-					entry : []
+					entry : [],
+					pathFiles : {}
 				};
 			}
 			return bundle[packageName];
@@ -161,9 +179,30 @@ let transformers = {
 		}
 		//We'll bundle all the individual stream items into one object here
 		return through.obj(function toBundle(chunk, enc, done) {
-			let filePath = path.relative(chunk.vinyl.base, chunk.vinyl.path);
 			let packageName = getPackageNameFromPath(chunk.vinyl.base);
 			let packageObject = getPackageObject(packageName);
+
+			let filePath;
+			let files;
+			//If file is subpath of base then we can use a normal, relative require
+			if (chunk.vinyl.path.startsWith(chunk.vinyl.base)) {
+				filePath = path.relative(chunk.vinyl.base, chunk.vinyl.path);
+				files = packageObject.files;
+			} else {
+				//Otherwise we'll have to search through the pathfiles
+				let pathIndex = instance.options.path.findIndex((pathEntry) => {
+					return chunk.vinyl.path.startsWith(pathEntry);
+				});
+				if (pathIndex === -1) {
+					//TODO: make sure non-path non-relative files are resolved differently
+					//These are external files and shouldn't have a vinyl object attached anyway
+					throw new Error("Cannot resolve file");
+				}
+				files = packageObject.pathFiles[pathIndex] = packageObject.pathFiles[pathIndex] || {};
+				let pathEntry = instance.options.path[pathIndex];
+				filePath = path.relative(pathEntry, chunk.vinyl.path);
+				files = packageObject.pathFiles[pathIndex];
+			}
 			//We need to get hold of an object where we can place the content of the module.
 			//Since the bundle is structured as an object representation of a file system we need to
 			//walk through the bundle tree as if it was a file system.
@@ -179,7 +218,7 @@ let transformers = {
 						bundle[part] = {};
 					}
 					return bundle[part];
-				}, packageObject.files);
+				}, files);
 
 			if (bundleOpts.entries.indexOf(chunk.vinyl.path) !== -1) {
 				packageObject.entry.push('./' + filePath);
@@ -266,6 +305,7 @@ class Common {
 		this.dependencyProcessor = options.dependencyProcessor || defaultDependencyProcessor;
 		this.bundler = options.bundler || defaultBundler;
 		this.filesSeen = [];
+		this.path = options.path || [];
 
 		this.options = options;
 	}
