@@ -14,7 +14,9 @@ let debug = require('debug')('common:resolve');
 /**
  * Resolves the dependencies for a file to full file paths
  */
-module.exports = function dependencyResolver(chunk, compileOptions) {
+module.exports = function dependencyResolver(chunk, compileOptions = {}) {
+	//TODO: this can be done cleaner
+	compileOptions.resolvers = compileOptions.resolvers || dependencyResolver.defaultResolvers;
 	debug('Creating dependency resolver for ' + chunk.vinyl.path);
 	return function resolveDependency(dep, done) {
 		debug('Resolving dependency from ' + chunk.vinyl.path + ' to ' + dep);

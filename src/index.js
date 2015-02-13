@@ -20,6 +20,8 @@ let beautify = require('js-beautify');
 let bundleSerializer = require('./bundleSerializer');
 //TODO: check if we might add constructors to the bundle.
 //Constructors will help us to mark objects in the tree with a type, such that we can more easily mix stuff there.
+//TODO: search paths. When doing this we need to maintain a list of already loaded modules with their absolute path.
+//This allows us to detect overlapping search paths, which we can use to merge overlapping modules.
 
 let transformers = {
 	/**
@@ -31,28 +33,27 @@ let transformers = {
 	wrapVinyl (opts) {
 		return through.obj((chunk, enc, done) => {
 			done(null, {
-				vinyl : chunk,
-				isEntry : opts.entries.indexOf(chunk.path) !== -1
+				vinyl : chunk
 			});
 		});
 	},
 	/**
 	 * Finds and attaches dependencies of a file
 	 */
-	attachDependencies : through.obj.bind(null, (chunk, enc, done) => {
+	findDependencies : through.obj.bind(null, (chunk, enc, done) => {
 		chunk.deps = detective(chunk.vinyl.contents.toString());
 		done(null, chunk);
 	}),
 	/**
-	 * Resolves dependencies.
+	 * Resolves dependencies and adds them to the stream
 	 */
-	resolveDependencies (opts) {
+	resolveDependencies (instance) {
 		return through.obj(function resolveDependencies(chunk, enc, done) {
 			//Push the current file, we'll need that anyway
 			let onSuccess = catcher(done);
 
 			//TODO: filter out requires that we're not going to resolve here
-			async.map(chunk.deps, dependencyResolver(chunk, opts), onSuccess((deps) => {
+			async.map(chunk.deps, dependencyResolver(chunk, instance.options), onSuccess((deps) => {
 				//Check if we've found all dependencies:
 				//At this point depStreams should be an array of streams, but any dependency that could
 				//not be resolved will have a falsy value instead. By applying a not operation to the
@@ -80,8 +81,9 @@ let transformers = {
 				let outer = this;
 				if (depStreams.length) {
 					//We concatinate the streams and pipe them through the rest of the pipeline
-					new StreamConcat(depStreams, { objectMode : true })
-						.pipe(combine(createPipeline(pipeline, opts)))
+					instance.compiler(new StreamConcat(depStreams, { objectMode : true }), instance)
+					//TODO: either remove this line or reintroduce it
+						//.pipe(combine(createPipeline(pipeline, opts)))
 						.pipe(through.obj(function deps(chunk, enc, cb) {
 							//Each file found in the recursive step will also be pushed to the outer stream to
 							//collect all files together
@@ -91,16 +93,14 @@ let transformers = {
 				} else {
 					done();
 				}
-
 			}));
-
 		});
 	},
 
 	/**
 	 * Bundles all streams together into one bundle object.
 	 */
-	bundleStream (opts) {
+	bundleStream (instance, bundleOpts) {
 		let bundle = {};
 		/**
 		 * Gets (or creates) an object for a package.
@@ -149,7 +149,7 @@ let transformers = {
 					return bundle[part];
 				}, packageObject.files);
 
-			if (chunk.isEntry) {
+			if (bundleOpts.entries.indexOf(chunk.vinyl.path) !== -1) {
 				packageObject.entry.push('./' + filePath);
 			}
 
@@ -166,7 +166,7 @@ let transformers = {
 	/**
 	 * Serializes a bundle object into a js file
 	 */
-	serialize (opts) {
+	serialize (instance) {
 		return through.obj(function serialize(chunk, enc, done) {
 			done(null, bundleSerializer(chunk));
 		});
@@ -174,8 +174,8 @@ let transformers = {
 	/**
 	 * Beautifies a javascript object if debug is set
 	 */
-	beautify (opts) {
-		if (!opts.debug) {
+	beautify (instance) {
+		if (!instance.options.debug) {
 			return through.obj();
 		} else {
 			return through.obj((chunk, enc, done) => {
@@ -187,39 +187,17 @@ let transformers = {
 	/**
 	 * Transforms a simple stream into a vinyl object.
 	 */
-	createVinylStream (opts) {
+	createVinylStream (instance, bundleOpts) {
 		return through.obj(function createVinylStream(chunk, enc, done) {
-			done(null, new VinylFile({ contents : new Buffer(chunk) }));
+			done(null, new VinylFile({ contents : new Buffer(chunk), path : bundleOpts.name }));
 		});
-	},
-	/**
-	 * Collects all files passed through the transformer into the entries array of the options.
-	 *
-	 * This should be placed at the beginning of the pipeline, such that all files initially passed
-	 * to it will be marked as entry files.
-	 *
-	 * If entries is already manually provided a no-op transformer will be returned, such that the
-	 * user can overwrite the default behaviour easily.
-	 */
-	collectEntries (opts) {
-		if (opts.entries) {
-			return through.obj();
-		} else {
-			opts.entries = [];
-			return through.obj((chunk, enc, done) => {
-				opts.entries.push(chunk.path);
-				done(null, chunk);
-			});
-		}
 	}
 };
 
-let setup = [
-	transformers.collectEntries
-];
 
+//TODO: rename
 let pipeline = [transformers.wrapVinyl,
-	transformers.attachDependencies,
+	transformers.findDependencies,
 	transformers.resolveDependencies
 ];
 
@@ -230,16 +208,38 @@ let finalize = [
 	transformers.createVinylStream
 ];
 
-function createPipeline(transformers, opts) {
-	return transformers.map(binder(opts)).map(invoke);
+function createPipeline(transformers, ...opts) {
+	return transformers.map(binder(...opts)).map(invoke);
 }
 
+function defaultCompiler(stream, common) {
+	return stream
+		.pipe(common.processDeps());
+}
 
-module.exports = (opts) => {
-	opts = opts || {};
-	//TODO: better basepath
-	opts.basePath = opts.basePath || process.cwd();
-	opts.resolvers = opts.resolvers || dependencyResolver.defaultResolvers;
-	return combine(createPipeline(setup.concat(pipeline, finalize), opts));
-};
+function defaultDependencyProcessor(...args) {
+	return combine(createPipeline(pipeline, ...args));
+}
 
+function defaultBundler(...args) {
+	return combine(createPipeline(finalize, ...args));
+}
+
+class Common {
+	constructor(options) {
+		this.compiler = options.compiler || defaultCompiler;
+		this.dependencyProcessor = options.dependencyProcessor || defaultDependencyProcessor;
+		this.bundler = options.bundler || defaultBundler;
+
+		this.options = options;
+	}
+
+	processDeps(opts) {
+		//TODO: caching
+		return this.dependencyProcessor(this, opts);
+	}
+	bundle(bundleOpts) {
+		return this.bundler(this, bundleOpts);
+	}
+}
+module.exports = Common;

@@ -1,19 +1,29 @@
 let fs = require('vinyl-fs');
 let path = require('path');
-let common = require('./');
+let Common = require('./');
 let through = require('through2');
 
 let entries = process.argv.slice(2);
 
-entries.forEach((entry) => {
-	let entryPath = path.resolve(process.cwd(), entry);
-	fs.src(entryPath, { base : process.cwd() + '/test' })
-		.pipe(common({ debug : true }))
-		//TOdO: move this to a separate module
-		.pipe(through.obj((chunk, enc, done) => {
-			chunk.path = 'out.js';
-			done(null, chunk);
-		}))
-		.pipe(fs.dest(process.cwd() + '/test/out'));
-});
+let common = new Common({ compiler : compile, debug : true });
+
+//(NOTE: this should be default compiler)
+function compile(stream, common) {
+	return stream
+		.pipe(common.processDeps());
+}
+
+entries = entries.map((entry) => path.resolve(process.cwd(), entry));
+let entryStream = fs.src(entries, { base : process.cwd() + '/test' });
+
+compile(entryStream, common)
+	.pipe(common.bundle({ name : 'out.js', entries : entries }))
+	.pipe(fs.dest(process.cwd() + '/test/out'));
+
+/*
+//Or shortcut:
+common.compile(entries)
+	.pipe(common.bundle({ name : 'out.js', entry : entries }))
+	.pipe(fs.dest(process.cwd() + '/test/out'));
+*/
 
