@@ -36,7 +36,7 @@ let transformers = {
 	 * The goal of this is to be able to pass additional data alongside the vinyl stream without
 	 * having to monkey patch the vinyl objects.
 	 */
-	wrapVinyl (opts) {
+	wrapVinyl () {
 		return through.obj((chunk, enc, done) => {
 			done(null, {
 				vinyl : chunk
@@ -47,13 +47,15 @@ let transformers = {
 	/**
 	 * Finds and attaches dependencies of a file
 	 */
-	findDependencies : through.obj.bind(null, (chunk, enc, done) => {
-		chunk.deps = {};
-		detective(chunk.vinyl.contents.toString())
-			//For now all dependencies will have value null since they're not resolved yet
-			.forEach((dep) => chunk.deps[dep] = null );
-		done(null, chunk);
-	}),
+	findDependencies (instance) {
+		return through.obj((chunk, enc, done) => {
+			chunk.deps = {};
+			detective(chunk.vinyl.contents.toString())
+				//For now all dependencies will have value null since they're not resolved yet
+				.forEach((dep) => chunk.deps[dep] = null );
+			done(null, chunk);
+		});
+	},
 
 	/**
 	 * Resolves dependencies and adds them to the stream
@@ -66,7 +68,7 @@ let transformers = {
 			let deps = Object.keys(chunk.deps);
 
 			//TODO: filter out requires that we're not going to resolve here
-			async.map(deps, dependencyResolver(chunk, instance.options), onSuccess((resolvedDeps) => {
+			async.map(deps, dependencyResolver(chunk, instance), onSuccess((resolvedDeps) => {
 				//Check if we've found all dependencies:
 				//At this point resolvedDeps should be an array of objects, but any dependency that could
 				//not be resolved will have a falsy value instead. By applying a not operation to the
@@ -89,25 +91,22 @@ let transformers = {
 		});
 	},
 
-	compileDependencies (instance) {
+	compileDependencies (instance, compile) {
 		return through.obj(function (chunk, enc, done) {
 
 			let outer = this;
 			//We don't want to compile the same file twice, so we remove those that we've seen already
 			//here, and additionally we update the filesSeen list
 			let newFiles = values(chunk.deps)
-				.filter((dep) => instance.filesSeen.indexOf(dep.path) === -1);
+				.filter((dep) => instance.filesSeen.indexOf(dep.file) === -1);
 			instance.filesSeen.concat(newFiles.map((file) => file.path));
-
-			let streams = newFiles
-				.map(getter('vinyl'));
 
 			//Note: we can only push the chunk when we're done with it's properties: as soon as the chunk
 			//is pushed it will be piped trough the rest of the pipeline, which might alter the object.
 			this.push(chunk);
-			let latch = countDownLatch(streams.length, () =>  done());
-			streams.forEach((stream) => {
-				instance.compiler(stream, instance)
+			let latch = countDownLatch(newFiles.length, () =>  done());
+			newFiles.forEach((file) => {
+				compile(file.file, file.base)
 					.pipe(through.obj(function(chunk, enc, cb) {
 						outer.push(chunk);
 						cb(null, chunk);
@@ -130,8 +129,8 @@ let transformers = {
 					let dep = chunk.deps[depName];
 					//If the dependency is in the same module as the file that requires it we can just
 					//use a relative require. Otherwise we'll have to try a path-require or an external require
-					if (dep.path.startsWith(chunk.vinyl.base)) {
-						chunk.deps[depName] = './' + path.relative(path.dirname(chunk.vinyl.path), dep.path);
+					if (dep.file.startsWith(chunk.vinyl.base)) {
+						chunk.deps[depName] = './' + path.relative(path.dirname(chunk.vinyl.path), dep.file);
 					} else {
 						let pathIndex = instance.options.path.findIndex((pathEntry) => {
 							return chunk.vinyl.path.startsWith(pathEntry);
@@ -139,7 +138,7 @@ let transformers = {
 						if (pathIndex === -1) {
 							throw new Error("Could not find the base module for " + chunk.vinyl.path);
 						}
-						chunk.deps[depName] = pathIndex + '/' + path.relative(instance.options.path[pathIndex], dep.path);
+						chunk.deps[depName] = pathIndex + '/' + path.relative(instance.options.path[pathIndex], dep.file);
 					}
 				});
 			done(null, chunk);
@@ -168,6 +167,7 @@ let transformers = {
 			}
 			return bundle[packageName];
 		}
+
 		/**
 		 * Returns the name of a package based on it's path.
 		 *
@@ -177,6 +177,7 @@ let transformers = {
 		function getPackageNameFromPath(filePath) {
 			return path.basename(filePath);
 		}
+
 		//We'll bundle all the individual stream items into one object here
 		return through.obj(function toBundle(chunk, enc, done) {
 			let packageName = getPackageNameFromPath(chunk.vinyl.base);
@@ -301,18 +302,18 @@ function defaultBundler(...args) {
 
 class Common {
 	constructor(options) {
-		this.compiler = options.compiler || defaultCompiler;
 		this.dependencyProcessor = options.dependencyProcessor || defaultDependencyProcessor;
 		this.bundler = options.bundler || defaultBundler;
 		this.filesSeen = [];
 		this.path = options.path || [];
+		this.mappings = options.mappings || {};
 
 		this.options = options;
 	}
 
-	processDeps(opts) {
+	resolveDependencies(compiler) {
 		//TODO: caching
-		return this.dependencyProcessor(this, opts);
+		return this.dependencyProcessor(this, compiler);
 	}
 	bundle(bundleOpts) {
 		return this.bundler(this, bundleOpts);

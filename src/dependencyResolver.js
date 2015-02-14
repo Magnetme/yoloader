@@ -14,11 +14,26 @@ let debug = require('debug')('common:resolve');
 /**
  * Resolves the dependencies for a file to full file paths
  */
-module.exports = function dependencyResolver(chunk, compileOptions = {}) {
+module.exports = function dependencyResolver(chunk, instance) {
+	let compileOptions = instance.options;
 	//TODO: this can be done cleaner
 	compileOptions.resolvers = compileOptions.resolvers || dependencyResolver.defaultResolvers;
+
+	let wildcardMappings = {};
+	Object.keys(instance.mappings)
+		.filter((key) => key.endsWith('*'))
+		.forEach((key) => wildcardMappings[key.substr(0, key.length-1)] = instance.mappings[key]);
+
 	debug('Creating dependency resolver for ' + chunk.vinyl.path);
 	return function resolveDependency(dep, done) {
+		if (instance.mappings[dep]) {
+			dep = instance.mappings[dep];
+		}
+		let from = Object.keys(wildcardMappings).find((mapping) => dep.startsWith(mapping));
+		if (from) {
+			let to = wildcardMappings[from];
+			dep = dep.replace(from, to);
+		}
 		debug('Resolving dependency from ' + chunk.vinyl.path + ' to ' + dep);
 		asyncReduce(compileOptions.resolvers, (result, resolver, index, arr, cb) => {
 			if (result) {
@@ -76,7 +91,7 @@ let fileCache = {};
 
 function toResultObject(file, base) {
 	if (!fileCache[file]) {
-		fileCache[file] = { vinyl : vinylFs.src(file, { base : base }), path: file };
+		fileCache[file] = { file, base };
 	}
 
 	return fileCache[file];
