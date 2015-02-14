@@ -5,7 +5,7 @@ var qux = require('./qux');
 var foo = require('foo');
 var bar = require('bar');
 var baz = require('baz');
-var baz = require('baz/baz');
+var baz = require('yolo/baz');
 var p = require('p');
 var boo = require('boo');
 

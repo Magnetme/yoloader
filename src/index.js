@@ -307,6 +307,7 @@ class Common {
 		this.filesSeen = [];
 		this.path = options.path || [];
 		this.mappings = options.mappings || {};
+		this.dependencyResolvers = dependencyResolver.defaultResolvers;
 
 		this.options = options;
 	}

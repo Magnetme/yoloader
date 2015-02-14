@@ -10,39 +10,23 @@ let fs = require('fs');
 let vinylFs = require('vinyl-fs');
 let debug = require('debug')('common:resolve');
 
-
 /**
  * Resolves the dependencies for a file to full file paths
  */
 module.exports = function dependencyResolver(chunk, instance) {
 	let compileOptions = instance.options;
-	//TODO: this can be done cleaner
-	compileOptions.resolvers = compileOptions.resolvers || dependencyResolver.defaultResolvers;
-
-	let wildcardMappings = {};
-	Object.keys(instance.mappings)
-		.filter((key) => key.endsWith('*'))
-		.forEach((key) => wildcardMappings[key.substr(0, key.length-1)] = instance.mappings[key]);
 
 	debug('Creating dependency resolver for ' + chunk.vinyl.path);
 	return function resolveDependency(dep, done) {
-		if (instance.mappings[dep]) {
-			dep = instance.mappings[dep];
-		}
-		let from = Object.keys(wildcardMappings).find((mapping) => dep.startsWith(mapping));
-		if (from) {
-			let to = wildcardMappings[from];
-			dep = dep.replace(from, to);
-		}
 		debug('Resolving dependency from ' + chunk.vinyl.path + ' to ' + dep);
-		asyncReduce(compileOptions.resolvers, (result, resolver, index, arr, cb) => {
+		asyncReduce(instance.dependencyResolvers, (result, resolver, index, arr, cb) => {
 			if (result) {
 				cb(null, result);
 			} else {
 				let opts = {
 					compileOptions : compileOptions,
-					stream : chunk,
-					base : chunk.vinyl.base
+					base : chunk.vinyl.base,
+					resolve : resolveDependency
 				};
 				resolver(chunk.vinyl.path, dep, opts, cb);
 			}
