@@ -67,7 +67,6 @@ let transformers = {
 
 			let deps = Object.keys(chunk.deps);
 
-			//TODO: filter out requires that we're not going to resolve here
 			async.map(deps, dependencyResolver(chunk, instance), onSuccess((resolvedDeps) => {
 				//Check if we've found all dependencies:
 				//At this point resolvedDeps should be an array of objects, but any dependency that could
@@ -313,7 +312,6 @@ class Common {
 	}
 
 	resolveDependencies(compiler) {
-		//TODO: caching
 		return this.dependencyProcessor(this, compiler);
 	}
 	bundle(bundleOpts) {
