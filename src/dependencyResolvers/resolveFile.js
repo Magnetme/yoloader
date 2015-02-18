@@ -1,5 +1,5 @@
 let { isGlobal, isResolved, existsAndIsFile } = require('./util');
-let debug = require('debug')('yolo:resolve:file');
+let debug = require('debug')('yoloader:resolve:file');
 let { catcher } = require('../f');
 let path = require('path');
 

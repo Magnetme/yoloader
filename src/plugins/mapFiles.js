@@ -1,4 +1,4 @@
-module.exports = function addMapping(yolo, mapping) {
+module.exports = function addMapping(yoloader, mapping) {
 	function mappingResolver(mappings) {
 
 		//Wildcard mappings are very simple for now: their keys end in a * and everything before the star
@@ -27,5 +27,5 @@ module.exports = function addMapping(yolo, mapping) {
 			done(null, dep);
 		};
 	}
-	yolo.dependencyResolvers.unshift(mappingResolver(mapping));
+	yoloader.dependencyResolvers.unshift(mappingResolver(mapping));
 };

@@ -277,9 +277,9 @@ function createPipeline(transformers, ...opts) {
 	return transformers.map(binder(...opts)).map(invoke);
 }
 
-function defaultCompiler(stream, yolo) {
+function defaultCompiler(stream, yoloader) {
 	return stream
-		.pipe(yolo.processDeps());
+		.pipe(yoloader.processDeps());
 }
 
 function defaultDependencyProcessor(...args) {
@@ -290,7 +290,7 @@ function defaultBundler(...args) {
 	return combine(createPipeline(bundlePipeline, ...args));
 }
 
-class Yolo {
+class Yoloader {
 	constructor(options) {
 		this.dependencyProcessor = options.dependencyProcessor || defaultDependencyProcessor;
 		this.bundler = options.bundler || defaultBundler;
@@ -323,4 +323,4 @@ class Yolo {
 		return this.bundler(this, bundleOpts);
 	}
 }
-module.exports = Yolo;
+module.exports = Yoloader;
