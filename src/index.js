@@ -260,14 +260,13 @@ let transformers = {
 };
 
 
-//TODO: rename
-let pipeline = [transformers.wrapVinyl,
+let dependencyPipeline = [transformers.wrapVinyl,
 	transformers.findDependencies,
 	transformers.resolveDependencies,
 	transformers.compileDependencies
 ];
 
-let finalize = [
+let bundlePipeline = [
 	transformers.linkDependencies,
 	transformers.bundleStream,
 	transformers.serialize,
@@ -284,11 +283,11 @@ function defaultCompiler(stream, yolo) {
 }
 
 function defaultDependencyProcessor(...args) {
-	return combine(createPipeline(pipeline, ...args));
+	return combine(createPipeline(dependencyPipeline, ...args));
 }
 
 function defaultBundler(...args) {
-	return combine(createPipeline(finalize, ...args));
+	return combine(createPipeline(bundlePipeline, ...args));
 }
 
 class Yolo {
