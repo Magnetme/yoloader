@@ -221,7 +221,7 @@ let transformers = {
 			//an actual function
 			target.content = chunk.vinyl;
 			target.deps = chunk.deps;
-			done(null, {});
+			done();
 		}, function finalizeBundle(cb) { //NOTE: don't use arrow functions here, it binds this and messes stuff up
 			this.push(bundle);
 			cb();
@@ -230,16 +230,16 @@ let transformers = {
 	/**
 	 * Serializes a bundle object into a js file
 	 */
-	serialize (instance) {
+	serialize (instance, bundleOpts) {
 		return through.obj(function serialize(chunk, enc, done) {
-			done(null, bundleSerializer(chunk));
+			done(null, bundleSerializer(chunk, instance, bundleOpts));
 		});
 	},
 	/**
-	 * Beautifies a javascript object if debug is set
+	 * Beautifies a javascript object if dev is set (not needed for debug builds, just for us when developing)
 	 */
 	beautify (instance) {
-		if (!instance.options.debug) {
+		if (!instance.options.dev) {
 			return through.obj();
 		} else {
 			return through.obj((chunk, enc, done) => {

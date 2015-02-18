@@ -7,7 +7,8 @@ let mapFiles = require('./plugins/mapFiles');
 let entries = process.argv.slice(2);
 
 let yolo = new Yolo({ debug : true,
-												path : [process.cwd() + '/test/p', { path : process.cwd(), name : 'yolo'}],
+	//dev : true,
+	path : [process.cwd() + '/test/p', { path : process.cwd(), name : 'yolo'}],
 });
 
 mapFiles(yolo, { 'yolo/*' : 'baz/' });
@@ -20,6 +21,6 @@ function compile(file, base) {
 entries = entries.map((entry) => path.resolve(process.cwd(), entry));
 
 compile(entries, process.cwd() + '/test')
-	.pipe(yolo.bundle({ name : 'out.js', entries : entries }))
+	.pipe(yolo.bundle({ name : 'out.js', entries : entries, sourceRoot : 'yolo' }))
 	.pipe(fs.dest(process.cwd() + '/test/out'));
 
