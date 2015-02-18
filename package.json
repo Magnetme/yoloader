@@ -2,12 +2,12 @@
   "name": "yoloader",
   "version": "0.0.1",
   "description": "",
-  "main": "index.js",
+  "main": "out/index.js",
   "author": "Tiddo Langerak <tiddolangerak@gmail.com>",
   "license": "Apache-2.0",
   "scripts": {
     "build": "cd src; 6to5 *.js **/*.js -d ../out",
-    "test": "rm -f test/out/out.js; npm run build; echo '';  node cli.js test/foo.js"
+    "test": "rm -f test/out/out.js; npm run build; echo '';  node test/run.js"
   },
   "dependencies": {
     "async": "^0.9.0",
