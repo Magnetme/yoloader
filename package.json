@@ -1,6 +1,6 @@
 {
   "name": "yoloader",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "main": "out/index.js",
   "author": "Tiddo Langerak <tiddolangerak@gmail.com>",
   "license": "Apache-2.0",
