@@ -9,7 +9,6 @@ let {
 	not,
 	maskFilter,
 	catcher,
-	uniqFilter,
 	values,
 	getter
 } = require('./f');
@@ -85,6 +84,7 @@ let transformers = {
 	},
 
 	compileDependencies (instance, compile) {
+		//TODO: more efficient duplicate checking
 		return through.obj(function (chunk, enc, done) {
 
 			let outer = this;
@@ -92,7 +92,6 @@ let transformers = {
 			//here, and additionally we update the filesSeen list
 			let newFiles = values(chunk.deps)
 				.filter((dep) => instance.filesSeen.indexOf(dep.file) === -1);
-			instance.filesSeen.concat(newFiles.map((file) => file.path));
 
 			//Note: we can only push the chunk when we're done with it's properties: as soon as the chunk
 			//is pushed it will be piped trough the rest of the pipeline, which might alter the object.
@@ -103,7 +102,10 @@ let transformers = {
 				//If the compile function didn't return anything then we ignore the file.
 				if (compileStream) {
 					compileStream.pipe(through.obj(function(chunk, enc, cb) {
-						outer.push(chunk);
+						if (instance.filesSeen.indexOf(chunk.vinyl.path) === -1) {
+							instance.filesSeen.push(chunk.vinyl.path);
+							outer.push(chunk);
+						}
 						cb(null, chunk);
 						//this currently assumes that each stream has exactly one file, and should be improved
 						//Unfortunatally it somehow didn't work when the countDown call was done in the flush
