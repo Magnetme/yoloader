@@ -1,16 +1,16 @@
 {
   "name": "yoloader",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "main": "out/index.js",
   "author": "Tiddo Langerak <tiddolangerak@gmail.com>",
   "license": "Apache-2.0",
   "scripts": {
-    "prepublish" : "npm run clean; npm run build",
+    "prepublish": "npm run clean; npm run build",
     "build": "cd src; babel *.js **/*.js -d ../out; cd ..; cp -r out/loader.js out/plugins .",
     "test": "rm -f test/out/out.js; npm run build; echo '';  node test/run.js",
-    "clean" : "rm -rf out loader.js plugins test/out"
+    "clean": "rm -rf out loader.js plugins test/out"
   },
-  "files" : [
+  "files": [
     "package.json",
     "out",
     "loader.js",
