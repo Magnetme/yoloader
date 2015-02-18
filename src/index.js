@@ -24,11 +24,6 @@ let bundleSerializer = require('./bundleSerializer');
 let countDownLatch = require('./countDownLatch');
 let UnresolvedDependenciesError = require('./errors/UnresolvedDependenciesError');
 
-//TODO: check if we might add constructors to the bundle.
-//Constructors will help us to mark objects in the tree with a type, such that we can more easily mix stuff there.
-//TODO: search paths. When doing this we need to maintain a list of already loaded modules with their absolute path.
-//This allows us to detect overlapping search paths, which we can use to merge overlapping modules.
-
 let transformers = {
 	/**
 	 * Wraps a vinyl stream in an object.
