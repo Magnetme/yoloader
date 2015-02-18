@@ -8,7 +8,7 @@ let {
 let path = require('path');
 let fs = require('fs');
 let vinylFs = require('vinyl-fs');
-let debug = require('debug')('common:resolve');
+let debug = require('debug')('yolo:resolve');
 let resolveFile = require('./dependencyResolvers/resolveFile');
 let resolveJsFile = require('./dependencyResolvers/resolveJsFile');
 let resolvePackageMain = require('./dependencyResolvers/resolvePackageMain');

@@ -286,9 +286,9 @@ function createPipeline(transformers, ...opts) {
 	return transformers.map(binder(...opts)).map(invoke);
 }
 
-function defaultCompiler(stream, common) {
+function defaultCompiler(stream, yolo) {
 	return stream
-		.pipe(common.processDeps());
+		.pipe(yolo.processDeps());
 }
 
 function defaultDependencyProcessor(...args) {
@@ -299,7 +299,7 @@ function defaultBundler(...args) {
 	return combine(createPipeline(finalize, ...args));
 }
 
-class Common {
+class Yolo {
 	constructor(options) {
 		this.dependencyProcessor = options.dependencyProcessor || defaultDependencyProcessor;
 		this.bundler = options.bundler || defaultBundler;
@@ -318,4 +318,4 @@ class Common {
 		return this.bundler(this, bundleOpts);
 	}
 }
-module.exports = Common;
+module.exports = Yolo;

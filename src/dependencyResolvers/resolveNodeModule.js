@@ -1,5 +1,5 @@
 let { isGlobal, isResolved } = require('./util');
-let debug = require('debug')('common:resolve:node-module');
+let debug = require('debug')('yolo:resolve:node-module');
 let { catcher } = require('../f');
 let path = require('path');
 

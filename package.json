@@ -1,10 +1,10 @@
 {
-  "name": "commonjs",
+  "name": "yolo-loader",
   "version": "0.0.1",
   "description": "",
   "main": "index.js",
   "author": "Tiddo Langerak <tiddolangerak@gmail.com>",
-  "license": "ISC",
+  "license": "Apache-2.0",
   "scripts": {
     "build": "cd src; 6to5 *.js **/*.js -d ../out",
     "test": "rm -f test/out/out.js; npm run build; echo '';  node cli.js test/foo.js"
