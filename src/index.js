@@ -99,8 +99,10 @@ let transformers = {
 			this.push(chunk);
 			let latch = countDownLatch(newFiles.length, () =>  done());
 			newFiles.forEach((file) => {
-				compile(file.file, file.base)
-					.pipe(through.obj(function(chunk, enc, cb) {
+				let compileStream = compile(file.file, file.base);
+				//If the compile function didn't return anything then we ignore the file.
+				if (compileStream) {
+					compileStream.pipe(through.obj(function(chunk, enc, cb) {
 						outer.push(chunk);
 						cb(null, chunk);
 						//this currently assumes that each stream has exactly one file, and should be improved
@@ -108,6 +110,9 @@ let transformers = {
 						//function, the flush function was just never called.
 						latch.countDown();
 					}));
+				} else {
+					latch.countDown();
+				}
 			});
 		});
 	},
