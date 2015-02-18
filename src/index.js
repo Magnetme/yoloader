@@ -69,11 +69,10 @@ let transformers = {
 
 			async.map(deps, dependencyResolver(chunk, instance), onSuccess((resolvedDeps) => {
 				//Check if we've found all dependencies:
-				//At this point resolvedDeps should be an array of objects, but any dependency that could
-				//not be resolved will have a falsy value instead. By applying a not operation to the
-				//entire array we are left over with a mask that can filter out the unresolved files.
-				//So that's exactly what we're going to do here.
-				let unresolvedMask = resolvedDeps.map(not);
+				//At this point resolvedDeps should be an array of {file, base} pairs, but any dependency that could
+				//not be resolved will have falsy values for the file values. We use that to filter out
+				//unresolved dependencies.
+				let unresolvedMask = resolvedDeps.map(getter('file')).map(not);
 				let unresolved = deps.filter(maskFilter(unresolvedMask));
 				if (unresolved.length) {
 					return done(new UnresolvedDependenciesError(chunk.vinyl.path, unresolved));
@@ -131,13 +130,13 @@ let transformers = {
 					if (dep.file.startsWith(chunk.vinyl.base)) {
 						chunk.deps[depName] = './' + path.relative(path.dirname(chunk.vinyl.path), dep.file);
 					} else {
-						let pathIndex = instance.options.path.findIndex((pathEntry) => {
-							return chunk.vinyl.path.startsWith(pathEntry);
+						let pathEntry = instance.options.path.find((pathEntry) => {
+							return chunk.vinyl.path.startsWith(pathEntry.path);
 						});
-						if (pathIndex === -1) {
+						if (!pathEntry) {
 							throw new Error("Could not find the base module for " + chunk.vinyl.path);
 						}
-						chunk.deps[depName] = pathIndex + '/' + path.relative(instance.options.path[pathIndex], dep.file);
+						chunk.deps[depName] = pathEntry.name + '/' + path.relative(pathEntry.path, dep.file);
 					}
 				});
 			done(null, chunk);
@@ -159,7 +158,6 @@ let transformers = {
 			if (!bundle[packageName]) {
 				bundle[packageName] = {
 					files : {},
-					path : [],
 					entry : [],
 					pathFiles : {}
 				};
@@ -190,18 +188,17 @@ let transformers = {
 				files = packageObject.files;
 			} else {
 				//Otherwise we'll have to search through the pathfiles
-				let pathIndex = instance.options.path.findIndex((pathEntry) => {
-					return chunk.vinyl.path.startsWith(pathEntry);
+				let pathEntry = instance.options.path.find((pathEntry) => {
+					return chunk.vinyl.path.startsWith(pathEntry.path);
 				});
-				if (pathIndex === -1) {
+				if (!pathEntry) {
 					//TODO: make sure non-path non-relative files are resolved differently
 					//These are external files and shouldn't have a vinyl object attached anyway
 					throw new Error("Cannot resolve file");
 				}
-				files = packageObject.pathFiles[pathIndex] = packageObject.pathFiles[pathIndex] || {};
-				let pathEntry = instance.options.path[pathIndex];
-				filePath = path.relative(pathEntry, chunk.vinyl.path);
-				files = packageObject.pathFiles[pathIndex];
+				files = packageObject.pathFiles[pathEntry.name] = packageObject.pathFiles[pathEntry.name] || {};
+				filePath = path.relative(pathEntry.path, chunk.vinyl.path);
+				files = packageObject.pathFiles[pathEntry.name];
 			}
 			//We need to get hold of an object where we can place the content of the module.
 			//Since the bundle is structured as an object representation of a file system we need to
@@ -304,7 +301,21 @@ class Yolo {
 		this.dependencyProcessor = options.dependencyProcessor || defaultDependencyProcessor;
 		this.bundler = options.bundler || defaultBundler;
 		this.filesSeen = [];
-		this.path = options.path || [];
+		//We want an array of path objects, where each object is a { path, name } pair.
+		//This is because at runtime we don't have full paths to resolve to, so we'll have to do it
+		//name based. However, for convenience we also allow just path strings, from which we'll derive
+		//the name by using path.basename on the full path. Here we convert all those strings to objects,
+		//so that we don't need to bother about it later on.
+		options.path = options.path || {};
+		options.path = options.path.map((pathDef) => {
+			if (pathDef instanceof String || typeof pathDef === 'string') {
+				return { path : pathDef, name : path.basename(pathDef) };
+			} else {
+				return pathDef;
+			}
+		});
+		this.path = options.path;
+
 		this.mappings = options.mappings || {};
 		this.dependencyResolvers = dependencyResolver.defaultResolvers;
 

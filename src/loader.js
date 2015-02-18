@@ -50,14 +50,18 @@
 				// We return both the file definition and it's path
 				return { fileDef, filePath : targetPath.join('/') };
 			}
-		} else if (targetPath[0] === '/') {
-			throw new Error("Absolute paths not yet implemented");
 		} else {
-			//Non absolute, non relative = require from path entry.
-			//
-			let fileDef = file.split('/').reduce((current, next) => {
+			//non relative = require from path entry or otherwise globally
+			let fileParts = file.split('/').filter((x) => x);
+			let fileDef = fileParts.reduce((current, next) => {
 				return current && current[next];
 			}, pkg.pathFiles);
+			if (!fileDef) {
+				//try globally
+				fileDef = fileParts.reduce((current, next) => {
+					return current && current[next];
+				}, bundles);
+			}
 			if (fileDef) {
 				return { fileDef, filePath : file };
 			}

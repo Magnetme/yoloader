@@ -21,7 +21,7 @@ module.exports = function resolveNodeModule(dep, opts, cb) {
 			//No path, nothing to do
 			return cb(null, dep);
 		}
-		let pathEntry = pathArray[0];
+		let pathEntry = pathArray[0].path;
 		let file = path.join(pathEntry, dep.to);
 		debug(`Trying to load ${dep.to} from ${dep.from} as ${file}`);
 		let onSuccess = catcher(cb);

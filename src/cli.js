@@ -7,7 +7,7 @@ let mapFiles = require('./plugins/mapFiles');
 let entries = process.argv.slice(2);
 
 let yolo = new Yolo({ debug : true,
-												path : [process.cwd() + '/test/p', process.cwd()],
+												path : [process.cwd() + '/test/p', { path : process.cwd(), name : 'yolo'}],
 });
 
 mapFiles(yolo, { 'yolo/*' : 'baz/' });
