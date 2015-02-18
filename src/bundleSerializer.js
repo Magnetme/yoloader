@@ -1,6 +1,5 @@
 let { SourceMapGenerator, SourceMapConsumer } = require('source-map');
 let path = require('path');
-let base64 = require('js-base64').Base64;
 let applySourceMap = require('vinyl-sourcemaps-apply');
 let VinylFile = require('vinyl');
 

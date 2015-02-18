@@ -1,4 +1,4 @@
-require('6to5/polyfill');
+require('babel/polyfill');
 let through = require('through2');
 let detective = require('detective');
 let combine = require('stream-combiner');
