@@ -10,4 +10,6 @@ var baz = require('yolo/baz');
 
 var boo = require('boo');
 
+let di = (x) => x;
+
 console.log('foo');

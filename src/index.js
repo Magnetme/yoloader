@@ -243,8 +243,9 @@ let transformers = {
 			return through.obj();
 		} else {
 			return through.obj((chunk, enc, done) => {
-				let beauty = new Buffer(beautify(chunk));
-				done(null, beauty);
+				let beauty = beautify(chunk.contents.toString());
+				chunk.contents = new Buffer(beauty);
+				done(null, chunk);
 			});
 		}
 	},
@@ -270,8 +271,7 @@ let finalize = [
 	transformers.linkDependencies,
 	transformers.bundleStream,
 	transformers.serialize,
-	transformers.beautify,
-	transformers.createVinylStream
+	transformers.beautify
 ];
 
 function createPipeline(transformers, ...opts) {

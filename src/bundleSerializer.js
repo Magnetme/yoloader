@@ -1,7 +1,8 @@
-let SourceMapGenerator = require('source-map').SourceMapGenerator;
-let SourceMapConsumer = require('source-map').SourceMapConsumer;
+let { SourceMapGenerator, SourceMapConsumer } = require('source-map');
 let path = require('path');
-let inlineSourceMapComment = require('inline-source-map-comment');
+let base64 = require('js-base64').Base64;
+let applySourceMap = require('vinyl-sourcemaps-apply');
+let VinylFile = require('vinyl');
 
 /**
  * Check if an object is a vinyl object.
@@ -30,7 +31,9 @@ function serializeModule(module, bundleState) {
 	let res = bundleState.add('function(require,module,exports){');
 
 	let content = module.contents.toString();
-	res += bundleState.add(content, bundleState.bundlePathParts.join('/'));
+	//We need to slice of the /content part
+	let name = bundleState.bundlePathParts.slice(0, -1).join('/');
+	res += bundleState.add(content, name, module.sourceMap);
 
 	res += bundleState.add('}');
 	return res;
@@ -130,14 +133,15 @@ function serializeBundle(bundleObject, instance, bundleOpts) {
 			column : 0,
 		},
 		//sourceMap : new SourceMapGenerator({sourceRoot : process.cwd() }),
-		sourceMap : new SourceMapGenerator({sourceRoot : sourceRoot }),
+		sourceMap : new SourceMapGenerator({sourceRoot : sourceRoot, file : path.basename(bundleOpts.name) }),
 		/**
 		 * Registers a new part of the output to the bundle state, and returns the output;
 		 * @param {String} str The input string
 		 * @param {String} [file] The filename where the string comes from. If set new mappings will
 		 *                        automatically be created
+		 * @param {Object} [sourceMap] Optional sourcemap that is already applied to the file (using vinyl-sourcemap-apply)
 		 */
-		add(str, file) {
+		add(str, file, sourceMap) {
 			//Only bother with sourcemaps in debug mode
 			if (!instance.options.debug) {
 				return;
@@ -147,15 +151,46 @@ function serializeBundle(bundleObject, instance, bundleOpts) {
 				bundleState.sourceMap.setSourceContent(file, str);
 			}
 			let lines = str.split(/\r\n|\r|\n/);
+
+			//If we have an old sourcemap we'll apply that one
+			if (sourceMap) {
+				let smc = new SourceMapConsumer(sourceMap);
+				smc.eachMapping((mapping) => {
+					//Only when we're at the first line we need to take the column offset into account.
+					//All otherlines will be placed at their own line, so in that case we just need to take over
+					//the existing column mapping
+					let baseColumn = (mapping.generatedLine === 1 ? bundleState.currentLocation.column : 0);
+					let newMapping = {
+						generated : {
+							line : mapping.generatedLine + bundleState.currentLocation.line - 1,
+							column : mapping.generatedColumn + baseColumn
+						},
+						source : mapping.source,
+						name : mapping.name,
+						original : {
+							line: mapping.originalLine,
+							column : mapping.originalColumn
+						}
+					};
+					bundleState.sourceMap.addMapping(newMapping);
+				});
+				if (smc.sourcesContent) {
+					smc.sourcesContent.forEach((sourceContent, i) => bundleState.sourceMap.setSourceContent(smc.sources[i], sourceContent));
+				}
+			}
+
 			lines.forEach(function(line, idx) {
 				//Ad source mappings if needed
 				if (file) {
-					let mapping = {
-						generated : bundleState.currentLocation,
-						source : file,
-						original : { line : (idx + 1), column : 0 }
-					};
-					bundleState.sourceMap.addMapping(mapping);
+					//If we don't have an old sourcemap we'll generate new lines
+					if (!sourceMap) {
+						let mapping = {
+							generated : bundleState.currentLocation,
+							source : file,
+							original : { line : (idx + 1), column : 0 }
+						};
+						bundleState.sourceMap.addMapping(mapping);
+					}
 				}
 				if (idx !== lines.length - 1) {
 					bundleState.currentLocation.line++;
@@ -170,11 +205,12 @@ function serializeBundle(bundleObject, instance, bundleOpts) {
 	let result = bundleState.add('(function(){require.load(');
 	result += serializeThing(bundleObject, bundleState);
 	result += bundleState.add(');}());');
+	let file = new VinylFile({ contents : new Buffer(result), path : bundleOpts.name });
 	//Only sourcemaps in debug mode
 	if (instance.options.debug) {
-		result += '\n' + inlineSourceMapComment(bundleState.sourceMap.toString(), { sourcesContent : true });
+		applySourceMap(file, bundleState.sourceMap.toString());
 	}
-	return result;
+	return file;
 }
 
 
