@@ -4,3 +4,4 @@ loader.js
 !src/loader.js
 plugins/
 !src/plugins
+loader.min.js

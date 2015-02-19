@@ -5,10 +5,8 @@
   "author": "Tiddo Langerak <tiddolangerak@gmail.com>",
   "license": "Apache-2.0",
   "scripts": {
-    "prepublish": "npm run clean; npm run build",
-    "build": "cd src; babel *.js **/*.js -d ../out; cd ..; cp -r out/loader.js out/plugins .",
-    "test": "rm -f test/out/out.js; npm run build; echo '';  node test/run.js",
-    "clean": "rm -rf out loader.js plugins test/out"
+    "prepublish": "gulp pre-publish",
+    "test": "gulp clean; gulp build;  node test/run.js"
   },
   "files": [
     "package.json",
@@ -34,7 +32,12 @@
     "vinyl-sourcemaps-apply": "^0.1.4"
   },
   "devDependencies": {
+    "fs-extra": "^0.16.3",
+    "gulp": "^3.8.11",
+    "gulp-babel": "~4.0.0",
+    "gulp-rename": "^1.2.0",
     "gulp-sourcemaps": "~1.3.0",
-    "gulp-babel": "~4.0.0"
+    "gulp-uglify": "^1.1.0",
+    "run-sequence": "^1.0.2"
   }
 }
