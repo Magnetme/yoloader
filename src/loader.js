@@ -114,7 +114,8 @@
 		load (bundle) {
 			recursiveMerge(bundles, bundle);
 			Object.keys(bundle).forEach((packageName) => {
-				let pkg = bundle[packageName];
+				//Note: the shared bundles should be used here, such that external files can be loaded as well
+				let pkg = bundles[packageName];
 				let entry = pkg.entry;
 				if (entry) {
 					entry.forEach((entry) => {
