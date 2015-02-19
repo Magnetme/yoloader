@@ -138,12 +138,14 @@ function serializeBundle(bundleObject, instance, bundleOpts) {
 		 * @param {String} str The input string
 		 * @param {String} [file] The filename where the string comes from. If set new mappings will
 		 *                        automatically be created
-		 * @param {Object} [sourceMap] Optional sourcemap that is already applied to the file (using vinyl-sourcemap-apply)
+		 * @param {Object} [sourceMap] If set sourcemaps will be generated for this file. If an actual
+		 *                             sourcemap is provided it will be combined with the generated
+		 *                             sourcemap.
 		 */
 		add(str, file, sourceMap) {
 			//Only bother with sourcemaps in debug mode
-			if (!instance.options.debug) {
-				return;
+			if (!sourceMap) {
+				return str;
 			}
 			let source;
 			if (file) {
@@ -206,10 +208,8 @@ function serializeBundle(bundleObject, instance, bundleOpts) {
 	result += serializeThing(bundleObject, bundleState);
 	result += bundleState.add(');}());');
 	let file = new VinylFile({ contents : new Buffer(result), path : bundleOpts.name });
-	//Only sourcemaps in debug mode
-	if (instance.options.debug) {
-		applySourceMap(file, bundleState.sourceMap.toString());
-	}
+	//We'll always apply sourcemaps to the vinyl stream, it's up to the caller to actually write them.
+	applySourceMap(file, bundleState.sourceMap.toString());
 	return file;
 }
 

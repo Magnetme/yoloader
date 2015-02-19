@@ -8,7 +8,7 @@ var babel = require('gulp-babel');
 
 var entries = ['foo.js'];
 
-var yoloader = new Yoloader({ debug : true,
+var yoloader = new Yoloader({
 	//dev : true,
 	path : [__dirname + '/p'],
 });
