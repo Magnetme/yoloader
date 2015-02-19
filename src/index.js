@@ -89,23 +89,27 @@ let transformers = {
 
 			let outer = this;
 			//We don't want to compile the same file twice, so we remove those that we've seen already
-			//here, and additionally we update the filesSeen list
+			//here, and additionally we update the filesCompiled list
 			let newFiles = values(chunk.deps)
-				.filter((dep) => instance.filesSeen.indexOf(dep.file) === -1);
+				.filter((dep) => {
+					return instance.filesCompiled.indexOf(dep.file) === -1 &&
+						instance.filesPending.indexOf(dep.file) === -1;
+				});
+			instance.filesPending = instance.filesPending.concat(newFiles.map((file) => file.file));
 
 			//Note: we can only push the chunk when we're done with it's properties: as soon as the chunk
 			//is pushed it will be piped trough the rest of the pipeline, which might alter the object.
-			this.push(chunk);
+			if (instance.filesCompiled.indexOf(chunk.vinyl.path) === -1) {
+				instance.filesCompiled.push(chunk.vinyl.path);
+				this.push(chunk);
+			}
 			let latch = countDownLatch(newFiles.length, () =>  done());
 			newFiles.forEach((file) => {
 				let compileStream = compile(file.file, file.base);
 				//If the compile function didn't return anything then we ignore the file.
 				if (compileStream) {
 					compileStream.pipe(through.obj((chunk, enc, cb) => {
-						if (instance.filesSeen.indexOf(chunk.vinyl.path) === -1) {
-							instance.filesSeen.push(chunk.vinyl.path);
-							outer.push(chunk);
-						}
+						outer.push(chunk);
 						cb(null, chunk);
 					}, (cb) => { latch.countDown(); cb(); } ));
 				} else {
@@ -297,7 +301,8 @@ class Yoloader {
 	constructor(options) {
 		this.dependencyProcessor = options.dependencyProcessor || defaultDependencyProcessor;
 		this.bundler = options.bundler || defaultBundler;
-		this.filesSeen = [];
+		this.filesCompiled = [];
+		this.filesPending = [];
 		//We want an array of path objects, where each object is a { path, name } pair.
 		//This is because at runtime we don't have full paths to resolve to, so we'll have to do it
 		//name based. However, for convenience we also allow just path strings, from which we'll derive
