@@ -32,18 +32,12 @@ module.exports = function dependencyResolver(chunk, instance) {
 			base : null
 		};
 		asyncReduce(instance.dependencyResolvers, (result, resolver, index, arr, cb) => {
-			let timeout = setTimeout(() =>
-			                           done(new Error("Resolver took more than a second, it's probably broken")),
-			                         1000);
 			let opts = {
 				compileOptions : compileOptions,
 				base : chunk.vinyl.base,
 				resolve : resolveDependency
 			};
-			resolver(dep, opts, (...args) => {
-				clearTimeout(timeout);
-				cb.apply(null, args);
-			}) ;
+			resolver(dep, opts, cb);
 		}, null, (err, dep) => {
 			if (err) {
 				done(err);
