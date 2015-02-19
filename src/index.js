@@ -101,17 +101,13 @@ let transformers = {
 				let compileStream = compile(file.file, file.base);
 				//If the compile function didn't return anything then we ignore the file.
 				if (compileStream) {
-					compileStream.pipe(through.obj(function(chunk, enc, cb) {
+					compileStream.pipe(through.obj((chunk, enc, cb) => {
 						if (instance.filesSeen.indexOf(chunk.vinyl.path) === -1) {
 							instance.filesSeen.push(chunk.vinyl.path);
 							outer.push(chunk);
 						}
 						cb(null, chunk);
-						//this currently assumes that each stream has exactly one file, and should be improved
-						//Unfortunatally it somehow didn't work when the countDown call was done in the flush
-						//function, the flush function was just never called.
-						latch.countDown();
-					}));
+					}, (cb) => { latch.countDown(); cb(); } ));
 				} else {
 					latch.countDown();
 				}

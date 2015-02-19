@@ -4,6 +4,7 @@ module.exports = function countDownLatch(count, callback) {
 			callback();
 		}
 	}
+	checkDone();
 	return {
 		countDown () {
 			count--;
