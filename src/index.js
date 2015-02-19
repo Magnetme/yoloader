@@ -243,7 +243,9 @@ let transformers = {
 		});
 	},
 	/**
-	 * Beautifies a javascript object if dev is set (not needed for debug builds, just for us when developing)
+	 *  Beautifies a javascript object if dev is set.
+	 *  It's just for debugging purposes and should not be used for actual module generation.
+	 *  It's not guaranteed to work with all features (e.g. atm it breaks sourcemaps)
 	 */
 	beautify (instance) {
 		if (!instance.options.dev) {
