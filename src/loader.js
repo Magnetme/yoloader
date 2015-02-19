@@ -97,7 +97,14 @@
 		let module = {
 			exports : {}
 		};
-		fileDef.content(localRequire, module, module.exports);
+		if (!fileDef.result) {
+			fileDef.content(localRequire, module, module.exports);
+			fileDef.result = {
+				module : module
+			};
+		} else {
+			module = fileDef.result.module;
+		}
 		return module.exports;
 	}
 	function load(pkg, file, current) {
