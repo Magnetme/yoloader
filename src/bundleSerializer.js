@@ -150,9 +150,10 @@ function serializeBundle(bundleObject, instance, bundleOpts) {
 				bundleState.sourceMap.setSourceContent(file, str);
 			}
 			let lines = str.split(/\r\n|\r|\n/);
+			let hasSourceMap = sourceMap && sourceMap.mappings && sourceMap.mappings.length > 0;
 
 			//If we have an old sourcemap we'll apply that one
-			if (sourceMap) {
+			if (hasSourceMap) {
 				let smc = new SourceMapConsumer(sourceMap);
 				smc.eachMapping((mapping) => {
 					//Only when we're at the first line we need to take the column offset into account.
@@ -182,7 +183,7 @@ function serializeBundle(bundleObject, instance, bundleOpts) {
 				//Ad source mappings if needed
 				if (file) {
 					//If we don't have an old sourcemap we'll generate new lines
-					if (!sourceMap) {
+					if (!hasSourceMap) {
 						let mapping = {
 							generated : bundleState.currentLocation,
 							source : file,
