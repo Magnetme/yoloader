@@ -27,8 +27,9 @@ module.exports = function resolveNodeModule(dep, opts, cb) {
 		let onSuccess = catcher(cb);
 		opts.resolve(file, onSuccess((res) => {
 			if (res) {
-				dep.path = res.file;
+				dep.file = res.file;
 				dep.base = res.base;
+				dep.as = res.as;
 				debug(`Resolved ${dep.to} from ${dep.from} to ${res}`);
 				cb(null, dep);
 			} else {

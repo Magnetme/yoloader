@@ -22,8 +22,9 @@ module.exports = function fileAliasResolver(transformFunc) {
 		debug(`Trying to resolve ${dep.to} from ${dep.from} as aliased file ${newDep.to}`);
 
 		resolveFile(newDep, opts, onSuccess((res) => {
-			dep.path = res.path;
+			dep.file = res.file;
 			dep.base = res.base;
+			dep.as = res.as;
 			cb(null, dep);
 		}));
 	};

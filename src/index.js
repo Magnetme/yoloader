@@ -127,9 +127,12 @@ let transformers = {
 			Object.keys(chunk.deps)
 				.forEach((depName) =>  {
 					let dep = chunk.deps[depName];
-					//If the dependency is in the same module as the file that requires it we can just
-					//use a relative require. Otherwise we'll have to try a path-require or an external require
-					if (dep.file.startsWith(chunk.vinyl.base)) {
+					//If we have an aliased file, we'll use that name
+					if (dep.as) {
+						chunk.deps[depName] = dep.as;
+					} else if (dep.file.startsWith(chunk.vinyl.base)) {
+						//If the dependency is in the same module as the file that requires it we can just
+						//use a relative require. Otherwise we'll have to try a path-require or an external require
 						chunk.deps[depName] = './' + path.relative(path.dirname(chunk.vinyl.path), dep.file);
 					} else {
 						let pathEntry = instance.options.path.find((pathEntry) => {
@@ -184,8 +187,15 @@ let transformers = {
 
 			let filePath;
 			let files;
-			//If file is subpath of base then we can use a normal, relative require
-			if (chunk.vinyl.path.startsWith(chunk.vinyl.base)) {
+			//If an explicit name is set we'll use that
+			if (chunk.name) {
+				let nameParts = chunk.name.split('/');
+				filePath = nameParts.slice(1).join('/');
+				packageName = nameParts[0];
+				packageObject = getPackageObject(packageName);
+				files = packageObject.files;
+			} else if (chunk.vinyl.path.startsWith(chunk.vinyl.base)) {
+				//If file is subpath of base then we can use a normal, relative require
 				filePath = path.relative(chunk.vinyl.base, chunk.vinyl.path);
 				files = packageObject.files;
 			} else {
@@ -283,26 +293,15 @@ let bundlePipeline = [
 ];
 
 function createPipeline(transformers, ...opts) {
-	return transformers.map(binder(...opts)).map(invoke);
-}
-
-function defaultCompiler(stream, yoloader) {
-	return stream
-		.pipe(yoloader.processDeps());
-}
-
-function defaultDependencyProcessor(...args) {
-	return combine(createPipeline(dependencyPipeline, ...args));
-}
-
-function defaultBundler(...args) {
-	return combine(createPipeline(bundlePipeline, ...args));
+	return combine(transformers.map(binder(...opts)).map(invoke));
 }
 
 class Yoloader {
 	constructor(options = {}) {
-		this.dependencyProcessor = options.dependencyProcessor || defaultDependencyProcessor;
-		this.bundler = options.bundler || defaultBundler;
+		this.dependencyProcessorPipeline = dependencyPipeline;
+		this.bundlePipeline = bundlePipeline;
+		this.dependencyProcessor = options.dependencyProcessor || createPipeline.bind(null, this.dependencyProcessorPipeline);
+		this.bundler = options.bundler || createPipeline.bind(null, this.bundlePipeline);
 		this.filesCompiled = [];
 		this.filesPending = [];
 		//We want an array of path objects, where each object is a { path, name } pair.

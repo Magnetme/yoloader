@@ -16,7 +16,7 @@ module.exports = function resolveFile(dep, opts, cb) {
 	existsAndIsFile(file, onSuccess((found) => {
 		if (found) {
 			debug(`Resolved ${dep.to} from ${dep.from} as ${file}`);
-			dep.path = file;
+			dep.file = file;
 			dep.base = opts.base;
 		}
 		cb(null, dep);

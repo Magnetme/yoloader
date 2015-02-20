@@ -28,8 +28,11 @@ module.exports = function dependencyResolver(chunk, instance) {
 		let dep = {
 			from : chunk.vinyl.path,
 			to : depName,
-			path : null,
-			base : null
+			file : null,
+			base : null,
+			//The resolved path under which it will be loaded. This can be used to overwrite the normal
+			//behaviour, e.g. when you expose a file under a different name than it's actual filename.
+			as : null
 		};
 		asyncReduce(instance.dependencyResolvers, (result, resolver, index, arr, cb) => {
 			let opts = {
@@ -41,25 +44,14 @@ module.exports = function dependencyResolver(chunk, instance) {
 		}, null, (err, dep) => {
 			if (err) {
 				done(err);
+			} else if (dep.file) {
+				done(null, dep);
 			} else {
-				done(null, toResultObject(dep));
+				done(null, false);
 			}
 		});
 	};
 };
-
-let fileCache = {};
-
-function toResultObject(dep) {
-	if (!dep.path) {
-		return false;
-	}
-	if (!fileCache[dep.path]) {
-		fileCache[dep.path] = { file : dep.path, base : dep.base };
-	}
-
-	return fileCache[dep.path];
-}
 
 module.exports.defaultResolvers = [
 	resolveFile,

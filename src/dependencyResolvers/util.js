@@ -11,7 +11,7 @@ function isGlobal(depName) {
  * Checks if a dependency object is already resolved.
  */
 function isResolved(dep) {
-	return !!dep.path;
+	return !!dep.file;
 }
 
 /**

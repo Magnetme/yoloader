@@ -29,8 +29,9 @@ module.exports = function resolvePackageMain(dep, opts, cb) {
 
 					//Now lets recursively try to resolve the found file using the resolving strategy
 					opts.resolve(mainFile, onSuccess((res) => {
-						dep.path = res.file;
+						dep.file = res.file;
 						dep.base = opts.base;
+						dep.as = res.as;
 						cb(null, dep);
 					}));
 
