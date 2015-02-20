@@ -136,7 +136,7 @@ let transformers = {
 							return chunk.vinyl.path.startsWith(pathEntry.path);
 						});
 						if (!pathEntry) {
-							throw new Error("Could not find the base module for " + chunk.vinyl.path);
+							throw new Error("Could not find the base module for " + dep.file);
 						}
 						chunk.deps[depName] = pathEntry.name + '/' + path.relative(pathEntry.path, dep.file);
 					}
@@ -300,7 +300,7 @@ function defaultBundler(...args) {
 }
 
 class Yoloader {
-	constructor(options) {
+	constructor(options = {}) {
 		this.dependencyProcessor = options.dependencyProcessor || defaultDependencyProcessor;
 		this.bundler = options.bundler || defaultBundler;
 		this.filesCompiled = [];
@@ -310,7 +310,7 @@ class Yoloader {
 		//name based. However, for convenience we also allow just path strings, from which we'll derive
 		//the name by using path.basename on the full path. Here we convert all those strings to objects,
 		//so that we don't need to bother about it later on.
-		options.path = options.path || {};
+		options.path = options.path || [];
 		options.path = options.path.map((pathDef) => {
 			if (pathDef instanceof String || typeof pathDef === 'string') {
 				return { path : pathDef, name : path.basename(pathDef) };
