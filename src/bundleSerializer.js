@@ -30,8 +30,8 @@ function serializeModule(module, bundleState) {
 	let res = bundleState.add('function(require,module,exports){');
 
 	let content = module.contents.toString();
-	//We need to slice of the /content part
-	let name = bundleState.bundlePathParts.slice(0, -1).join('/');
+	//We need to slice of the /content part, as well as the /<bundle>/files part
+	let name = bundleState.bundlePathParts.slice(2, -1).join('/');
 	res += bundleState.add(content, name, module.sourceMap);
 
 	res += bundleState.add('}');
@@ -148,18 +148,18 @@ function serializeBundle(bundleObject, instance, bundleOpts) {
 				return str;
 			}
 			let source;
-			if (file) {
-				bundleState.sourceMap.setSourceContent(file, str);
-			}
 			let lines = str.split(/\r\n|\r|\n/);
 			let hasSourceMap = sourceMap && sourceMap.mappings && sourceMap.mappings.length > 0;
+			if (file && !hasSourceMap) {
+				bundleState.sourceMap.setSourceContent(file, str);
+			}
 
 			//If we have an old sourcemap we'll apply that one
 			if (hasSourceMap) {
 				let smc = new SourceMapConsumer(sourceMap);
 				smc.eachMapping((mapping) => {
 					//Only when we're at the first line we need to take the column offset into account.
-					//All otherlines will be placed at their own line, so in that case we just need to take over
+					//All others will be placed at their own line, so in that case we just need to take over
 					//the existing column mapping
 					let baseColumn = (mapping.generatedLine === 1 ? bundleState.currentLocation.column : 0);
 					let newMapping = {
