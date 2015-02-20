@@ -13,7 +13,7 @@ module.exports = function addMapping(yoloader, mapping) {
 
 			//If there's a simple file based mapping we will replace the require call with the mapped name
 			if (mappings[to]) {
-				dep.to = instanceMappings[to];
+				dep.to = mappings[to];
 			} else {
 				//Otherwise we'll check for wildcard mappings.
 				let mapFrom = Object.keys(wildcardMappings).find((mapping) => to.startsWith(mapping));
