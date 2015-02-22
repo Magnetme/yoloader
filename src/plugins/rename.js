@@ -17,7 +17,7 @@ module.exports = function rename(yoloader, renames) {
 				});
 			if (renameKey) {
 				if (renameKey.endsWith('*')) {
-					chunk.name = chunk.path.replace(renameKey.slice(0, -1), renames[renameKey]);
+					chunk.name = chunk.vinyl.path.replace(renameKey.slice(0, -1), renames[renameKey]);
 				} else {
 					chunk.name = renames[renameKey];
 				}
