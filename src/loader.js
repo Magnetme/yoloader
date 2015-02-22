@@ -58,9 +58,12 @@
 			}, pkg.pathFiles);
 			if (!fileDef) {
 				//try globally
-				fileDef = fileParts.reduce((current, next) => {
-					return current && current[next];
-				}, bundles);
+				pkg = bundles[fileParts[0]];
+				if (pkg && pkg.files) {
+					fileDef = fileParts.slice(1).reduce((current, next) => {
+						return current && current[next];
+					}, pkg.files);
+				}
 			}
 			if (fileDef) {
 				return { fileDef, filePath : file };
@@ -110,19 +113,27 @@
 	function load(pkg, file, current) {
 		return loadFromDefinition(pkg, findFileDefinition(pkg, file, current));
 	}
-	window.require = {
-		load (bundle) {
-			recursiveMerge(bundles, bundle);
-			Object.keys(bundle).forEach((packageName) => {
-				//Note: the shared bundles should be used here, such that external files can be loaded as well
-				let pkg = bundles[packageName];
-				let entry = pkg.entry;
-				if (entry) {
-					entry.forEach((entry) => {
-						load(pkg, entry);
-					});
-				}
-			});
+	window.require = function(file) {
+		let fileParts = file.split('/');
+		let pkg = bundles[fileParts[0]];
+		if (!pkg) {
+			throw new Error("Could not resolve " + file);
 		}
+		fileParts[0] = '.';
+		let def = findFileDefinition(pkg, fileParts.join('/'), '.');
+		loadFromDefinition(pkg, def);
+	};
+	window.require.load = (bundle) => {
+		recursiveMerge(bundles, bundle);
+		Object.keys(bundle).forEach((packageName) => {
+			//Note: the shared bundles should be used here, such that external files can be loaded as well
+			let pkg = bundles[packageName];
+			let entry = pkg.entry;
+			if (entry) {
+				entry.forEach((entry) => {
+					load(pkg, entry);
+				});
+			}
+		});
 	};
 }());
