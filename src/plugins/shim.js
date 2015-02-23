@@ -18,7 +18,7 @@ module.exports = function shim(shims) {
 				};
 			}
 			let prefix = '';
-			let postfix = '';
+			let suffix = '';
 			//Add require calls when needed
 			if (shim.depends) {
 				//Depends is a map of <var-name>:<require-name> pairs
@@ -32,10 +32,10 @@ module.exports = function shim(shims) {
 			}
 			if (shim.exports) {
 				//We need a leading ; because we can't be sure the file is closed properly
-				postfix = ';module.exports=' + shim.exports + ';';
+				suffix = ';module.exports=' + shim.exports + ';';
 			}
 			let fileContent = chunk.contents.toString();
-			chunk.contents = new Buffer(prefix + fileContent + postfix);
+			chunk.contents = new Buffer(prefix + fileContent + suffix);
 			//Apply sourcemaps
 			if (chunk.sourceMap) {
 				let map = prefixSourceMap(chunk, prefix, fileContent);
