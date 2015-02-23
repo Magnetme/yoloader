@@ -132,11 +132,12 @@ Bundles a yoloader stream into a single bundle file.
 Arguments:
 - `opts.name` - Filename of the bundle. Required if using sourcemaps.
 - `opts.entries` - Full paths to the entry files. These files will be called upon load.
-- `opts.sourceRoot` - Optional name of the source root. In most cases not needed. More information about this coming soon.
 
 ### Bundled plugins
 
-#### `require('yoloader/plugins/dirname')`
+Bundled plugins can be required with `require('yoloader/plugins/<pluginname>')`
+
+#### dirname
 Transformer that exposes the node style `__dirname` and `__filename` properties to the files.
 
 Example:
@@ -149,5 +150,94 @@ function compile(file, base)
 }
 ```
 
-#### `require('yoloader/plugins/mapFiles')`
-docs coming soon.
+#### transform
+
+Compatibility plugin for browserify-transformers.
+
+This plugin can be used to wrap browserify transformers such that they can be used with yoloader.
+
+Example (using the [brfs](https://github.com/substack/brfs) transformer):
+```javascript
+function compile(file, base) {
+	return vinylFs.src(file, { base : base })
+		.pipe(transform(brfs))
+		.pipe(resolveDependencies(opts));
+}
+```
+
+Some important notes:
+- Browserify transformers don't act on modules from the `node_modules` folder or from `path` by default.
+  However, yoloader doesn't make a difference between these two types of files, and hence the transformers will
+  always work as if they were global. You should do filtering yourself (e.g. with [gulp-if](https://github.com/robrich/gulp-if)).
+- The transform wrapper only works for "plain" transformers, that don't use browserify-specific functionality. Most transformers should work, but not all will.
+
+#### shim
+
+Allows non-CommonJS modules to be used as CommonJS module. It adds `require` calls for dependencies and adds a `module.exports` to expose its result to other modules.
+
+Example:
+```javascript
+var shimConfig = {};
+shimConfig[pathToAngularJs] = {
+	depends : {
+		//results in `var jQuery = require('jquery');`
+		'jQuery' : 'jquery'
+	},
+	//results in `module.exports = angular`
+	exports : 'angular'
+};
+
+function compile(file, base) {
+	return vinylFs.src(file, { base : base })
+		.pipe(shim(shimConfig))
+		.pipe(resolveDependencies(opts));
+}
+
+```
+
+#### packageCompile
+
+Plugin to allow packages to specify their own compilation steps.
+
+Usage:
+- Packages may specify a compile script in their `package.json` in the `yoloader-compile` field.
+- The package compile script should export a function that returns a transform stream in object mode.
+- The package compile script may accept an options argument
+- The build script that depends on this package should use the `packageCompile` transformer in its compiler pipeline.
+- Options may be passed to specific compiler scripts by passing an object to the `packageCompile` transformer, where the keys should match package names and the values will be passed as argument to the compile script of that package.
+
+Example:
+`a/package.json`
+```javascript
+{
+	"name" : "a",
+	"yoloader-compile" : "yolofile.js"
+}
+```
+
+`a/yolofile.js`
+```javascript
+module.exports = function compile(opts) {
+	return through.obj(function(chunk, enc, done) {
+		chunk.contents = translate(chunk.contents.toString(), opts.lang);
+	});
+}
+```
+
+`buildscript.js`
+```javascript
+var packageOptions = {
+	a : {
+		lang : "en"
+	}
+};
+
+function compile(file, base) {
+	return vinylFs.src(file, { base : base })
+		.pipe(packageCompile(packageOptions))
+		.pipe(yoloader.resolveDependencies(opts));
+}
+
+//etc.
+```
+
