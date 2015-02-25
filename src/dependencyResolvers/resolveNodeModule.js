@@ -15,8 +15,9 @@ module.exports = function resolveNodeModule(dep, opts, cb) {
 
 	let current = dep.from;
 	function loadFromParent() {
-		if (path.dirname(current) === current) {
-			//we're at root, nothing left to do
+		if (opts.base.startsWith(current) || path.dirname(current) === current) {
+			//We're either passed the base of the project or at root. In both cases
+			//we can't resolve the bundle without getting weird behaviour
 			return cb(null, dep);
 		}
 		current = path.dirname(current);
