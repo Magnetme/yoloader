@@ -207,6 +207,8 @@ let transformers = {
 				//If file is subpath of base then we can use a normal, relative require
 				filePath = path.relative(chunk.vinyl.base, chunk.vinyl.path);
 				files = packageObject.files;
+			} else {
+				throw new Error("Could not resolve file");
 			}
 			//We need to get hold of an object where we can place the content of the module.
 			//Since the bundle is structured as an object representation of a file system we need to
