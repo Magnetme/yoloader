@@ -163,8 +163,7 @@ let transformers = {
 			if (!bundle[packageName]) {
 				bundle[packageName] = {
 					files : {},
-					entry : [],
-					pathFiles : {}
+					entry : []
 				};
 			}
 			return bundle[packageName];
@@ -182,7 +181,17 @@ let transformers = {
 
 		//We'll bundle all the individual stream items into one object here
 		return through.obj(function toBundle(chunk, enc, done) {
-			let packageName = getPackageNameFromPath(chunk.vinyl.base);
+			//First try to check if the vinyl base is exactly equal to some path entry. If it is, then we'll
+			//use that as the package.
+			let packageName;
+			let pathEntry = instance.options.path.find((current) => {
+				return path.relative(chunk.vinyl.base, current.path) === '';
+			});
+			if (pathEntry && pathEntry.name) {
+				packageName = pathEntry.name;
+			} else {
+				packageName = getPackageNameFromPath(chunk.vinyl.base);
+			}
 			let packageObject = getPackageObject(packageName);
 
 			let filePath;
@@ -198,19 +207,6 @@ let transformers = {
 				//If file is subpath of base then we can use a normal, relative require
 				filePath = path.relative(chunk.vinyl.base, chunk.vinyl.path);
 				files = packageObject.files;
-			} else {
-				//Otherwise we'll have to search through the pathfiles
-				let pathEntry = instance.options.path.find((pathEntry) => {
-					return chunk.vinyl.path.startsWith(pathEntry.path);
-				});
-				if (!pathEntry) {
-					//TODO: make sure non-path non-relative files are resolved differently
-					//These are external files and shouldn't have a vinyl object attached anyway
-					throw new Error("Cannot resolve file");
-				}
-				files = packageObject.pathFiles[pathEntry.name] = packageObject.pathFiles[pathEntry.name] || {};
-				filePath = path.relative(pathEntry.path, chunk.vinyl.path);
-				files = packageObject.pathFiles[pathEntry.name];
 			}
 			//We need to get hold of an object where we can place the content of the module.
 			//Since the bundle is structured as an object representation of a file system we need to

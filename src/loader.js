@@ -16,11 +16,12 @@
 	let bundles = {};
 	/**
 	 * Finds a file definition object in a package.
-	 * @param {Object} pkg A package object
+	 * @param {Object} packageName Name of the package
 	 * @param {String} file The file to find (should be relative or absolute path)
 	 * @param {String} current  The current file path
 	 */
-	function findFileDefinition(pkg, file, current) {
+	function findFileDefinition(packageName, file, current) {
+		let pkg = bundles[packageName];
 		current = current || "";
 		let currentPath = current.split('/');
 		//we're not interested in the filename, so we'll pop that
@@ -29,8 +30,9 @@
 		//and then recursively applying each part on the current path. We'll end up with an array of
 		//path parts, which we can use to walk through the package to find the correct object
 		let targetPath = file.split('/');
+		let fullPathParts = null;
 		if (targetPath[0] === '.') {
-			targetPath = targetPath.reduce((current, nextPart) => {
+			fullPathParts = targetPath.reduce((current, nextPart) => {
 				//Current folder
 				if (nextPart === '.') {
 					return current;
@@ -42,44 +44,30 @@
 					return current.concat(nextPart);
 				}
 			}, currentPath);
-			//Walking through the package to get the definition
-			let fileDef = targetPath.reduce((current, next) => {
-				return current && current[next];
-			}, pkg.files);
-			if (fileDef) {
-				// We return both the file definition and it's path
-				return { fileDef, filePath : targetPath.join('/') };
-			}
 		} else {
-			//non relative = require from path entry or otherwise globally
-			let fileParts = file.split('/').filter((x) => x);
-			let fileDef = fileParts.reduce((current, next) => {
-				return current && current[next];
-			}, pkg.pathFiles);
-			if (!fileDef) {
-				//try globally
-				pkg = bundles[fileParts[0]];
-				if (pkg && pkg.files) {
-					fileDef = fileParts.slice(1).reduce((current, next) => {
-						return current && current[next];
-					}, pkg.files);
-				}
-			}
-			if (fileDef) {
-				return { fileDef, filePath : file };
-			}
-
+			//Non relative, require globally
+			fullPathParts = file.split('/').filter((x) => x);
 		}
-		//Oh oh..
+
+		let targetPackage = bundles[fullPathParts[0]];
+		if (targetPackage) {
+			let fileDef = fullPathParts.slice(1).reduce((current, next) => {
+				return current && current[next];
+			}, targetPackage.files);
+			if (fileDef) {
+				return { fileDef, filePath : fullPathParts.join('/') };
+			}
+		}
+		//Oh oh.. (should've returned by now)
 		throw new Error("Could not find file " + file + " from " + current);
 	}
 	/**
 	 * Loads a file from a definition object.
 	 *
-	 * @param {Object} pkg A package object
+	 * @param {Object} packageName Name of the package
 	 * @param {Object} definition A file definition
 	 */
-	function loadFromDefinition(pkg, definition) {
+	function loadFromDefinition(packageName, definition) {
 		let { fileDef, filePath } = definition;
 
 		//we're first going to find all dependencies (but not load them yet)
@@ -88,14 +76,14 @@
 		Object.keys(fileDef.deps)
 			.forEach((key) => {
 				let dep = fileDef.deps[key];
-				deps[key] = findFileDefinition(pkg, dep, filePath);
+				deps[key] = findFileDefinition(packageName, dep, filePath);
 			});
 		//Now it's just wrapping up: build the require function and the module.exports object and we're done
 		function localRequire(file) {
 			if (!deps[file]) {
 				throw new Error("Could not resolve " + file + " from " + filePath);
 			}
-			return loadFromDefinition(pkg, deps[file]);
+			return loadFromDefinition(packageName, deps[file]);
 		}
 		let module = {
 			exports : {}
@@ -110,18 +98,18 @@
 		}
 		return module.exports;
 	}
-	function load(pkg, file, current) {
-		return loadFromDefinition(pkg, findFileDefinition(pkg, file, current));
+	function load(packageName, file, current) {
+		return loadFromDefinition(packageName, findFileDefinition(packageName, file, current));
 	}
 	window.require = function(file) {
 		let fileParts = file.split('/');
-		let pkg = bundles[fileParts[0]];
-		if (!pkg) {
+		let packageName = fileParts[0];
+		if (!bundles[packageName]) {
 			throw new Error("Could not resolve " + file);
 		}
 		fileParts[0] = '.';
-		let def = findFileDefinition(pkg, fileParts.join('/'), '.');
-		loadFromDefinition(pkg, def);
+		let def = findFileDefinition(packageName, fileParts.join('/'), '.');
+		loadFromDefinition(packageName, def);
 	};
 	window.require.load = (bundle) => {
 		recursiveMerge(bundles, bundle);
@@ -131,7 +119,7 @@
 			let entry = pkg.entry;
 			if (entry) {
 				entry.forEach((entry) => {
-					load(pkg, entry);
+					load(packageName, entry, packageName + '/');
 				});
 			}
 		});
