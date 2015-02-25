@@ -34,7 +34,9 @@ function serializeModule(module, bundleState) {
 	let name = bundleState.bundlePathParts.slice(2, -1).join('/');
 	res += bundleState.add(content, name, module.sourceMap);
 
-	res += bundleState.add('}');
+	//We need a newline here: the last line of the bundle may be a line comment,
+	//which will break stuff if we don't place the closing } on a newline.
+	res += bundleState.add('\n}');
 	return res;
 }
 
