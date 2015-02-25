@@ -136,7 +136,7 @@ let transformers = {
 						chunk.deps[depName] = './' + path.relative(path.dirname(chunk.vinyl.path), dep.file);
 					} else {
 						let pathEntry = instance.options.path.find((pathEntry) => {
-							return chunk.vinyl.path.startsWith(pathEntry.path);
+							return dep.file.startsWith(pathEntry.path);
 						});
 						if (!pathEntry) {
 							throw new Error("Could not find the base module for " + dep.file);
