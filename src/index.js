@@ -110,7 +110,9 @@ let transformers = {
 				if (compileStream) {
 					compileStream.pipe(through.obj((chunk, enc, cb) => {
 						outer.push(chunk);
-						cb(null, chunk);
+						//IMPORTANT: if we push the chunk here to the inner stream stuff blows up.
+						//I don't know why (yet), but just don't do it
+						cb();
 					}, (cb) => { latch.countDown(); cb(); } ));
 				} else {
 					latch.countDown();
