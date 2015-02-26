@@ -124,10 +124,11 @@ Constructs a new yoloader instance.
 
 ### Stream transformers
 #### `yoloader.resolveDependencies(compile)`
-Resolves all dependencies for its input stream. It accepts a compile function as its only argument, which it will call once for each dependency. It will pass the full dependency path as the first argument, and the base path as second argument, which can (and should) be used to construct a vinyl stream. The compile function must return a yoloader stream, which will appended to the input stream. A yoloader stream is a stream that wraps a vinyl stream: the objects in the stream will have a `vinyl` property representing the original vinyl object and have some additional properties for dependency management. The `resolveDependencies` transformer itself returns such a stream. (Note: it's likely to change in the near future)
+Resolves all dependencies for its input stream. It accepts a compile function as its only argument, which it will call once for each dependency. It will pass the full dependency path as the first argument, and the base path as second argument, which can (and should) be used to construct a vinyl stream. The compile function must return a vinyl stream, which will appended to the input stream. The output stream of `resolveDependencies` is also a vinyl stream.
 
 #### `yoloader.bundle(opts)`
-Bundles a yoloader stream into a single bundle file.
+Bundles a vinyl stream into a single bundle file.
+Note that the vinyl stream must come from `resolveDependencies`; it adds some extra information to the stream that is required to be able to bundle everything together. (More information about the format will follow soon)
 
 Arguments:
 - `opts.name` - Filename of the bundle. Required if using sourcemaps.
