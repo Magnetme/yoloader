@@ -9,15 +9,15 @@ module.exports = function rename(yoloader, renames) {
 				.find((key) => {
 					if (key.endsWith('*')) {
 						key = key.slice(0, -1);
-						return chunk.vinyl.path.startsWith(key);
+						return chunk.path.startsWith(key);
 					} else {
-						return chunk.vinyl.path === key;
+						return chunk.path === key;
 					}
-					return chunk.vinyl.path.startsWith(key);
+					return chunk.path.startsWith(key);
 				});
 			if (renameKey) {
 				if (renameKey.endsWith('*')) {
-					chunk.name = chunk.vinyl.path.replace(renameKey.slice(0, -1), renames[renameKey]);
+					chunk.name = chunk.path.replace(renameKey.slice(0, -1), renames[renameKey]);
 				} else {
 					chunk.name = renames[renameKey];
 				}

@@ -24,19 +24,6 @@ let countDownLatch = require('./countDownLatch');
 let UnresolvedDependenciesError = require('./errors/UnresolvedDependenciesError');
 
 let transformers = {
-	/**
-	 * Wraps a vinyl stream in an object.
-	 *
-	 * The goal of this is to be able to pass additional data alongside the vinyl stream without
-	 * having to monkey patch the vinyl objects.
-	 */
-	wrapVinyl () {
-		return through.obj((chunk, enc, done) => {
-			done(null, {
-				vinyl : chunk
-			});
-		});
-	},
 
 	/**
 	 * Finds and attaches dependencies of a file
@@ -44,7 +31,7 @@ let transformers = {
 	findDependencies (instance) {
 		return through.obj((chunk, enc, done) => {
 			chunk.deps = {};
-			detective(chunk.vinyl.contents.toString())
+			detective(chunk.contents.toString())
 				//For now all dependencies will have value null since they're not resolved yet
 				.forEach((dep) => chunk.deps[dep] = null );
 			done(null, chunk);
@@ -69,7 +56,7 @@ let transformers = {
 				let unresolvedMask = resolvedDeps.map(getter('file')).map(not);
 				let unresolved = deps.filter(maskFilter(unresolvedMask));
 				if (unresolved.length) {
-					return done(new UnresolvedDependenciesError(chunk.vinyl.path, unresolved));
+					return done(new UnresolvedDependenciesError(chunk.path, unresolved));
 				}
 
 				//Now we can attach the dependency objects to the chunk.deps object.
@@ -99,8 +86,8 @@ let transformers = {
 
 			//Note: we can only push the chunk when we're done with it's properties: as soon as the chunk
 			//is pushed it will be piped trough the rest of the pipeline, which might alter the object.
-			if (instance.filesCompiled.indexOf(chunk.vinyl.path) === -1) {
-				instance.filesCompiled.push(chunk.vinyl.path);
+			if (instance.filesCompiled.indexOf(chunk.path) === -1) {
+				instance.filesCompiled.push(chunk.path);
 				this.push(chunk);
 			}
 			let latch = countDownLatch(newFiles.length, () =>  done());
@@ -132,10 +119,10 @@ let transformers = {
 					//If we have an aliased file, we'll use that name
 					if (dep.as) {
 						chunk.deps[depName] = dep.as;
-					} else if (dep.file.startsWith(chunk.vinyl.base)) {
+					} else if (dep.file.startsWith(chunk.base)) {
 						//If the dependency is in the same module as the file that requires it we can just
 						//use a relative require. Otherwise we'll have to try a path-require or an external require
-						chunk.deps[depName] = './' + path.relative(path.dirname(chunk.vinyl.path), dep.file);
+						chunk.deps[depName] = './' + path.relative(path.dirname(chunk.path), dep.file);
 					} else {
 						let pathEntry = instance.options.path.find((pathEntry) => {
 							return dep.file.startsWith(pathEntry.path);
@@ -187,12 +174,12 @@ let transformers = {
 			//use that as the package.
 			let packageName;
 			let pathEntry = instance.options.path.find((current) => {
-				return path.relative(chunk.vinyl.base, current.path) === '';
+				return path.relative(chunk.base, current.path) === '';
 			});
 			if (pathEntry && pathEntry.name) {
 				packageName = pathEntry.name;
 			} else {
-				packageName = getPackageNameFromPath(chunk.vinyl.base);
+				packageName = getPackageNameFromPath(chunk.base);
 			}
 			let packageObject = getPackageObject(packageName);
 
@@ -205,9 +192,9 @@ let transformers = {
 				packageName = nameParts[0];
 				packageObject = getPackageObject(packageName);
 				files = packageObject.files;
-			} else if (chunk.vinyl.path.startsWith(chunk.vinyl.base)) {
+			} else if (chunk.path.startsWith(chunk.base)) {
 				//If file is subpath of base then we can use a normal, relative require
-				filePath = path.relative(chunk.vinyl.base, chunk.vinyl.path);
+				filePath = path.relative(chunk.base, chunk.path);
 				files = packageObject.files;
 			} else {
 				throw new Error("Could not resolve file");
@@ -229,14 +216,14 @@ let transformers = {
 					return bundle[part];
 				}, files);
 
-			if (bundleOpts.entries.indexOf(chunk.vinyl.path) !== -1) {
+			if (bundleOpts.entries.indexOf(chunk.path) !== -1) {
 				packageObject.entry.push('./' + filePath);
 			}
 
 			//We've found our object, so we can place our info here
 			//We keep the vinyl stream as it is, such that the serializer can later transform that into
 			//an actual function
-			target.content = chunk.vinyl;
+			target.content = chunk;
 			target.deps = chunk.deps;
 			done();
 		}, function finalizeBundle(cb) { //NOTE: don't use arrow functions here, it binds this and messes stuff up
@@ -279,10 +266,10 @@ let transformers = {
 };
 
 
-let dependencyPipeline = [transformers.wrapVinyl,
+let dependencyPipeline = [
 	transformers.findDependencies,
 	transformers.resolveDependencies,
-	transformers.compileDependencies
+	transformers.compileDependencies,
 ];
 
 let bundlePipeline = [

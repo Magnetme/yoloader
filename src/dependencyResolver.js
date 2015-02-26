@@ -22,11 +22,11 @@ let resolvePath = require('./dependencyResolvers/resolvePath');
 module.exports = function dependencyResolver(chunk, instance) {
 	let compileOptions = instance.options;
 
-	debug('Creating dependency resolver for ' + chunk.vinyl.path);
+	debug('Creating dependency resolver for ' + chunk.path);
 	return function resolveDependency(depName, done) {
-		debug('Resolving dependency from ' + chunk.vinyl.path + ' to ' + depName);
+		debug('Resolving dependency from ' + chunk.path + ' to ' + depName);
 		let dep = {
-			from : chunk.vinyl.path,
+			from : chunk.path,
 			to : depName,
 			file : null,
 			base : null,
@@ -37,7 +37,7 @@ module.exports = function dependencyResolver(chunk, instance) {
 		asyncReduce(instance.dependencyResolvers, (result, resolver, index, arr, cb) => {
 			let opts = {
 				compileOptions : compileOptions,
-				base : chunk.vinyl.base,
+				base : chunk.base,
 				resolve : resolveDependency
 			};
 			resolver(dep, opts, cb);
