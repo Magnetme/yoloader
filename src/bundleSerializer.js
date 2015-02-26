@@ -30,13 +30,14 @@ function serializeModule(module, bundleState) {
 	let res = bundleState.add('function(require,module,exports){');
 
 	let content = module.contents.toString();
+	//We need every file to end in a newline, otherwise it might break stuff (e.g. when it ends in a linecomment)
+	//For simplicity we just always add the newline
+	content += '\n';
 	//We need to slice of the /content part, as well as the /<bundle>/files part
 	let name = bundleState.bundlePathParts.slice(2, -1).join('/');
 	res += bundleState.add(content, name, module.sourceMap);
 
-	//We need a newline here: the last line of the bundle may be a line comment,
-	//which will break stuff if we don't place the closing } on a newline.
-	res += bundleState.add('\n}');
+	res += bundleState.add('}');
 	return res;
 }
 
