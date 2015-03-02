@@ -118,11 +118,11 @@ let transformers = {
 					let dep = chunk.deps[depName];
 					//If we have an aliased file, we'll use that name
 					if (dep.as) {
-						chunk.deps[depName] = dep.as;
+						//nothing to do
 					} else if (dep.file.startsWith(chunk.base)) {
 						//If the dependency is in the same module as the file that requires it we can just
 						//use a relative require. Otherwise we'll have to try a path-require or an external require
-						chunk.deps[depName] = './' + path.relative(path.dirname(chunk.path), dep.file);
+						chunk.deps[depName].as = './' + path.relative(path.dirname(chunk.path), dep.file);
 					} else {
 						let pathEntry = instance.options.path.find((pathEntry) => {
 							return dep.file.startsWith(pathEntry.path);
@@ -130,7 +130,7 @@ let transformers = {
 						if (!pathEntry) {
 							throw new Error("Could not find the base module for " + dep.file);
 						}
-						chunk.deps[depName] = pathEntry.name + '/' + path.relative(pathEntry.path, dep.file);
+						chunk.deps[depName].as = pathEntry.name + '/' + path.relative(pathEntry.path, dep.file);
 					}
 				});
 			done(null, chunk);
@@ -224,7 +224,11 @@ let transformers = {
 			//We keep the vinyl stream as it is, such that the serializer can later transform that into
 			//an actual function
 			target.content = chunk;
-			target.deps = chunk.deps;
+			target.deps = {};
+			Object.keys(chunk.deps)
+				.forEach((dep) => {
+					target.deps[dep] = chunk.deps[dep].as;
+				});
 			done();
 		}, function finalizeBundle(cb) { //NOTE: don't use arrow functions here, it binds this and messes stuff up
 			this.push(bundle);
