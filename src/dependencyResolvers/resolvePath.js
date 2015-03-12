@@ -28,7 +28,14 @@ module.exports = function resolveNodeModule(dep, opts, cb) {
 		opts.resolve(file, onSuccess((res) => {
 			if (res) {
 				dep.file = res.file;
-				dep.base = pathEntry;
+				//If a path entry is a subpath of the rootpath then we add is as if it were a relative path.
+				//Otherwise we would end up with files having two absolute paths in the bundle, which we
+				//can't represent properly
+				if (pathEntry.startsWith(opts.base)) {
+					dep.base = opts.base;
+				} else {
+					dep.base = pathEntry;
+				}
 				dep.as = res.as;
 				debug(`Resolved ${dep.to} from ${dep.from} to ${res}`);
 				cb(null, dep);
