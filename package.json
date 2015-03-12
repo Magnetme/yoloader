@@ -44,5 +44,8 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/Magnetme/yoloader"
+  },
+  "publishConfig" : {
+    "registry" : "http://registry.npmjs.org"
   }
 }
