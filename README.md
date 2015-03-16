@@ -242,3 +242,8 @@ function compile(file, base) {
 //etc.
 ```
 
+The plugin also accepts a second option which will function as a shared base for the package specific options
+by means of prototypal inheritance (it will be set as the prototype of a clone of the package specific options).
+The package specific and the global parameters will also be passed as respectively second and third parameter,
+but it is recommended to not use those.
+
