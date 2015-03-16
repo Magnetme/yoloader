@@ -1,6 +1,6 @@
 {
   "name": "yoloader",
-  "version": "0.6.5",
+  "version": "0.7.0",
   "main": "out/index.js",
   "author": "Tiddo Langerak <tiddolangerak@gmail.com>",
   "license": "Apache-2.0",
@@ -45,7 +45,7 @@
     "type": "git",
     "url": "https://github.com/Magnetme/yoloader"
   },
-  "publishConfig" : {
-    "registry" : "http://registry.npmjs.org"
+  "publishConfig": {
+    "registry": "http://registry.npmjs.org"
   }
 }
