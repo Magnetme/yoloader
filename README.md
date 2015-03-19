@@ -196,6 +196,14 @@ function compile(file, base) {
 
 ```
 
+Keys for the shimconfig may also be glob patterns, which may be used to match with node_modules. E.g.:
+
+```javascript
+var shimConfig = {
+	'**/node_modules/my-package/pkg.js' : {}
+};
+```
+
 #### packageCompile
 
 Plugin to allow packages to specify their own compilation steps.

@@ -1,6 +1,7 @@
 let through = require('through2');
 let applySourceMap = require('vinyl-sourcemaps-apply');
 let prefixSourceMap = require('./util/prefixSourceMap');
+let minimatch = require('minimatch');
 
 /**
  * Provides a shim for non-commonjs files.
@@ -8,6 +9,13 @@ let prefixSourceMap = require('./util/prefixSourceMap');
 module.exports = function shim(shims) {
 	return through.obj((chunk, enc, done) => {
 		let shim = shims[chunk.path];
+		if (!shim) {
+			let shimKey = Object.keys(shims)
+				.find((shim) => minimatch(chunk.path, shim));
+			if (shimKey) {
+				shim = shims[shimKey];
+			}
+		}
 
 		if (shim) {
 
