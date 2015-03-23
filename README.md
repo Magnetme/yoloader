@@ -196,12 +196,7 @@ function compile(file, base) {
 
 ```
 
-Keys for the shimconfig may also be glob patterns, which may be used to match with node_modules. E.g.:
-
-```javascript
-var shimConfig = {
-	'**/node_modules/my-package/pkg.js' : {}
-};
+Keys for the shimconfig may also be node package names or glob patterns.
 ```
 
 #### packageCompile
