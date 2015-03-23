@@ -209,7 +209,9 @@ var shimConfig = {
 Plugin to allow packages to specify their own compilation steps.
 
 Usage:
-- Packages may specify a compile script in their `package.json` in the `yoloader-compile` field.
+- Packages may specify a compile script in their `package.json` in the `yoloaderCompile` field.
+- Extra dependencies may be specified in the `yoloaderDependencies` field of the `package.json`, these will
+  be installed before running the compiler.
 - The package compile script should export a function that returns a transform stream in object mode.
 - The package compile script may accept an options argument
 - The build script that depends on this package should use the `packageCompile` transformer in its compiler pipeline.
@@ -220,7 +222,10 @@ Example:
 ```javascript
 {
 	"name" : "a",
-	"yoloader-compile" : "yolofile.js"
+	"yoloaderCompile" : "yolofile.js",
+	"yoloaderDependencies" : {
+		"my-translate" : "~1.2.3"
+	}
 }
 ```
 
