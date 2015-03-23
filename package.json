@@ -23,6 +23,7 @@
     "inline-source-map-comment": "~1.0.3",
     "install": "~0.1.8",
     "js-beautify": "^1.5.4",
+    "minimatch": "^2.0.4",
     "mothership": "^0.3.0",
     "source-map": "~0.3.0",
     "stream-combiner": "^0.2.1",
