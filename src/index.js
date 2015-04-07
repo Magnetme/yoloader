@@ -23,6 +23,34 @@ let bundleSerializer = require('./bundleSerializer');
 let countDownLatch = require('./countDownLatch');
 let UnresolvedDependenciesError = require('./errors/UnresolvedDependenciesError');
 
+//Very simple ad hoc profiling implementation. I couldn't find any good non-continuous profiling
+//libraries in a couple of minutes, so writing my own is faster here. (suggestions for better frameworks
+//are welcome!)
+let startTimer = () => { return { stop(){} };};
+let printTimings = () => {};
+if (process.env.YOLOADER_PROFILE) {
+	let totalTimings = {};
+	startTimer = (name) => {
+		let start = new Date().getTime();
+		return {
+			stop() {
+				let now = new Date().getTime();
+				if (!start) {
+					console.error('timer was already stopped');
+				} else {
+					let totalTiming = totalTimings[name] || { time : 0, calls : 0 };
+					totalTiming.time += now - start;
+					totalTiming.calls++;
+					totalTimings[name] = totalTiming;
+					start = null;
+				}
+			}
+		};
+	};
+	printTimings = () => {
+		console.log(totalTimings);
+	};
+}
 let transformers = {
 
 	/**
@@ -30,10 +58,12 @@ let transformers = {
 	 */
 	findDependencies (instance) {
 		return through.obj((chunk, enc, done) => {
+			let timer = startTimer('findDeps');
 			chunk.deps = {};
 			detective(chunk.contents.toString())
 				//For now all dependencies will have value null since they're not resolved yet
 				.forEach((dep) => chunk.deps[dep] = null );
+			timer.stop();
 			done(null, chunk);
 		});
 	},
@@ -43,6 +73,7 @@ let transformers = {
 	 */
 	resolveDependencies (instance) {
 		return through.obj(function resolveDependencies(chunk, enc, done) {
+			let timer = startTimer('resolveDeps');
 			//Push the current file, we'll need that anyway
 			let onSuccess = catcher(done);
 
@@ -65,6 +96,7 @@ let transformers = {
 					chunk.deps[depName] = dep;
 				});
 
+				timer.stop();
 				done(null, chunk);
 			}));
 		});
@@ -73,6 +105,7 @@ let transformers = {
 	compileDependencies (instance, compile) {
 		//TODO: more efficient duplicate checking
 		return through.obj(function (chunk, enc, done) {
+			let timer = startTimer('compileDepsPrepare');
 
 			let outer = this;
 			//We don't want to compile the same file twice, so we remove those that we've seen already
@@ -91,7 +124,9 @@ let transformers = {
 				this.push(chunk);
 			}
 			let latch = countDownLatch(newFiles.length, () =>  done());
+			timer.stop();
 			newFiles.forEach((file) => {
+				let timer = startTimer('compileDepsTrigger');
 				let compileStream = compile(file.file, file.base);
 				//If the compile function didn't return anything then we ignore the file.
 				if (compileStream) {
@@ -104,6 +139,7 @@ let transformers = {
 				} else {
 					latch.countDown();
 				}
+				timer.stop();
 			});
 		});
 	},
@@ -113,6 +149,7 @@ let transformers = {
 	 */
 	linkDependencies (instance) {
 		return through.obj(function (chunk, enc, done) {
+			let timer = startTimer('link');
 			Object.keys(chunk.deps)
 				.forEach((depName) =>  {
 					let dep = chunk.deps[depName];
@@ -133,6 +170,7 @@ let transformers = {
 						chunk.deps[depName].as = pathEntry.name + '/' + path.relative(pathEntry.path, dep.file);
 					}
 				});
+			timer.stop();
 			done(null, chunk);
 		});
 	},
@@ -170,6 +208,7 @@ let transformers = {
 
 		//We'll bundle all the individual stream items into one object here
 		return through.obj(function toBundle(chunk, enc, done) {
+			let timer = startTimer('bundle');
 			//First try to check if the vinyl base is exactly equal to some path entry. If it is, then we'll
 			//use that as the package.
 			let packageName;
@@ -230,6 +269,7 @@ let transformers = {
 					target.deps[dep] = chunk.deps[dep].as;
 				});
 			done();
+			timer.stop();
 		}, function finalizeBundle(cb) { //NOTE: don't use arrow functions here, it binds this and messes stuff up
 			this.push(bundle);
 			cb();
@@ -240,7 +280,9 @@ let transformers = {
 	 */
 	serialize (instance, bundleOpts) {
 		return through.obj(function serialize(chunk, enc, done) {
+			let timer = startTimer('serialize');
 			done(null, bundleSerializer(chunk, instance, bundleOpts));
+			timer.stop();
 		});
 	},
 	/**
@@ -253,9 +295,11 @@ let transformers = {
 			return through.obj();
 		} else {
 			return through.obj((chunk, enc, done) => {
+				let timer = startTimer('beautify');
 				let beauty = beautify(chunk.contents.toString());
 				chunk.contents = new Buffer(beauty);
 				done(null, chunk);
+				timer.stop();
 			});
 		}
 	},
@@ -324,3 +368,5 @@ class Yoloader {
 	}
 }
 module.exports = Yoloader;
+
+process.on('exit', printTimings);
