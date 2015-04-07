@@ -54,6 +54,10 @@ let installDependencies = (() => {
 			packagesResolved.push(mothership.path);
 			delete pendingCbs[mothership.path];
 		}
+		//Although it's not strictly necessary to set cb to null here we do so anyway: due to the many
+		//callbacks it's easy to accidentally call this one, while it should never be called. By setting
+		//it to null we at least get an error when it's called accidentally.
+		cb = null;
 
 		let pkg = mothership.pack;
 
@@ -97,7 +101,7 @@ let installDependencies = (() => {
 		}, (filteredDeps) => {
 			//Naturally, when there are no deps to install we're done immediately
 			if (filteredDeps.length === 0) {
-				return cb();
+				return done();
 			}
 			//Otherwise we need to generate the arguments for npm install, which will then install
 			//the dependencies
