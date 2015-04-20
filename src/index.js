@@ -22,6 +22,7 @@ let beautify = require('js-beautify');
 let bundleSerializer = require('./bundleSerializer');
 let countDownLatch = require('./countDownLatch');
 let UnresolvedDependenciesError = require('./errors/UnresolvedDependenciesError');
+let crypto = require('crypto');
 
 //Very simple ad hoc profiling implementation. I couldn't find any good non-continuous profiling
 //libraries in a couple of minutes, so writing my own is faster here. (suggestions for better frameworks
@@ -51,19 +52,28 @@ if (process.env.YOLOADER_PROFILE) {
 		console.log(totalTimings);
 	};
 }
+
 let transformers = {
 
 	/**
 	 * Finds and attaches dependencies of a file
 	 */
 	findDependencies (instance) {
+		instance.dependencyCache = instance.dependencyCache || {};
 		return through.obj((chunk, enc, done) => {
-			let timer = startTimer('findDeps');
-			chunk.deps = {};
-			detective(chunk.contents.toString())
-				//For now all dependencies will have value null since they're not resolved yet
-				.forEach((dep) => chunk.deps[dep] = null );
-			timer.stop();
+			let content = chunk.contents.toString();
+			let hash = crypto.createHash('md5').update(content).digest('hex');
+			let cachedDeps = instance.dependencyCache[hash];
+			if (cachedDeps) {
+				chunk.deps = cachedDeps;
+			} else {
+				let timer = startTimer('findDeps');
+				instance.dependencyCache[hash] = chunk.deps = {};
+				detective(content)
+					//For now all dependencies will have value null since they're not resolved yet
+					.forEach((dep) => chunk.deps[dep] = null );
+				timer.stop();
+			}
 			done(null, chunk);
 		});
 	},
@@ -77,7 +87,10 @@ let transformers = {
 			//Push the current file, we'll need that anyway
 			let onSuccess = catcher(done);
 
-			let deps = Object.keys(chunk.deps);
+			let deps = Object.keys(chunk.deps)
+				.filter((dep) => {
+					return !chunk.deps[dep];
+				});
 
 			async.map(deps, dependencyResolver(chunk, instance), onSuccess((resolvedDeps) => {
 				//Check if we've found all dependencies:
