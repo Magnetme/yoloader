@@ -20,11 +20,30 @@ let resolvePath = require('./dependencyResolvers/resolvePath');
  * Resolves the dependencies for a file to full file paths
  */
 module.exports = function dependencyResolver(chunk, instance) {
+	instance.resolverCache = instance.resolverCache || {};
+	instance.resolverCache[chunk.path] = instance.resolverCache[chunk.path] || {};
+
 	let compileOptions = instance.options;
 
 	debug('Creating dependency resolver for ' + chunk.path);
 	return function resolveDependency(depName, done) {
 		debug('Resolving dependency from ' + chunk.path + ' to ' + depName);
+
+		//TODO: async cache
+		let cached = instance.resolverCache[chunk.path][depName];
+		if (cached) {
+			//If we've found the file in cache then it doesn't necessarily mean it still exists.
+			//So we'll do an exists check first. If the file exists we can use the cached value,
+			//otherwise we'll need to remove it from cache and try again
+			return fs.exists(cached.file, (exists) => {
+				if (exists) {
+					return done(null, cached);
+				} else {
+					delete instance.resolverCache[chunk.path][depName];
+					return resolveDependency(depName, done);
+				}
+			});
+		}
 		let dep = {
 			from : chunk.path,
 			to : depName,
@@ -45,6 +64,7 @@ module.exports = function dependencyResolver(chunk, instance) {
 			if (err) {
 				done(err);
 			} else if (dep.file) {
+				instance.resolverCache[chunk.path][depName] = dep;
 				done(null, dep);
 			} else {
 				done(null, false);
