@@ -59,19 +59,35 @@ let transformers = {
 	 * Finds and attaches dependencies of a file
 	 */
 	findDependencies (instance) {
+		instance.fileHashes = instance.fileHashes || {};
 		instance.dependencyCache = instance.dependencyCache || {};
+
 		return through.obj((chunk, enc, done) => {
 			let content = chunk.contents.toString();
+			//We first try to get dependencies from cache.
+			//We use an md5 hash of the file to check if the file has changed. If it hasn't we just use
+			//the cached dependencies. If it has changed we parse the file for dependencies but still
+			//try to use the cached versions such that we don't need to do the dependency resolving all
+			//over again.
+			let cachedDeps = instance.dependencyCache[chunk.path];
 			let hash = crypto.createHash('md5').update(content).digest('hex');
-			let cachedDeps = instance.dependencyCache[hash];
-			if (cachedDeps) {
+
+			if (instance.fileHashes[chunk.path] === hash && cachedDeps) {
 				chunk.deps = cachedDeps;
 			} else {
 				let timer = startTimer('findDeps');
-				instance.dependencyCache[hash] = chunk.deps = {};
+				chunk.deps = {};
+
+				cachedDeps = cachedDeps || {};
+
 				detective(content)
 					//For now all dependencies will have value null since they're not resolved yet
-					.forEach((dep) => chunk.deps[dep] = null );
+					.forEach((dep) => chunk.deps[dep] = cachedDeps[dep] || null);
+
+				//Update cache stuff
+				instance.fileHashes[chunk.path] = hash;
+				instance.dependencyCache[chunk.path] = chunk.deps;
+
 				timer.stop();
 			}
 			done(null, chunk);
@@ -127,20 +143,15 @@ let transformers = {
 			timer.stop();
 			newFiles.forEach((file) => {
 				let timer = startTimer('compileDepsTrigger');
-				let compileStream = compile(file.file, file.base);
-				//If the compile function didn't return anything then we ignore the file.
-				if (compileStream) {
-					compileStream
-						.pipe(resolver.resolveDependencies())
-						.pipe(through.obj((chunk, enc, cb) => {
-							outer.push(chunk);
-							//IMPORTANT: if we push the chunk here to the inner stream stuff blows up.
-							//I don't know why (yet), but just don't do it
-							cb();
+				compile(vinylFs.src(file.file, { base : file.base }))
+					.pipe(resolver.resolveDependencies())
+					.pipe(through.obj((chunk, enc, cb) => {
+						outer.push(chunk);
+						//IMPORTANT: if we push the chunk here to the inner stream stuff blows up.
+						//I don't know why (yet), but just don't do it
+						cb();
 					}, (cb) => { latch.countDown(); cb(); } ));
-				} else {
-					latch.countDown();
-				}
+
 				timer.stop();
 			});
 		});
