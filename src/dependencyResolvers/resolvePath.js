@@ -21,6 +21,7 @@ module.exports = function resolveNodeModule(dep, opts, cb) {
 			//No path, nothing to do
 			return cb(null, dep);
 		}
+		let pathName = pathArray[0].name;
 		let pathEntry = pathArray[0].path;
 		let file = path.join(pathEntry, dep.to);
 		debug(`Trying to load ${dep.to} from ${dep.from} as ${file}`);
@@ -37,6 +38,11 @@ module.exports = function resolveNodeModule(dep, opts, cb) {
 					dep.base = pathEntry;
 				}
 				dep.as = res.as;
+				//If we have given a name for the path than we will use that to generate a dependency name.
+				//that'll be used later for sourcemaps and stuff
+				if (pathName) {
+					dep.name = path.join(pathName, path.relative(pathEntry, dep.file));
+				}
 				debug(`Resolved ${dep.to} from ${dep.from} to ${res}`);
 				cb(null, dep);
 			} else {
