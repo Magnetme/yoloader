@@ -22,6 +22,37 @@ let beautify = require('js-beautify');
 let bundleSerializer = require('./bundleSerializer');
 let countDownLatch = require('./countDownLatch');
 let UnresolvedDependenciesError = require('./errors/UnresolvedDependenciesError');
+let crypto = require('crypto');
+let VinylCache = require('./VinylCache');
+
+//Very simple ad hoc profiling implementation. I couldn't find any good non-continuous profiling
+//libraries in a couple of minutes, so writing my own is faster here. (suggestions for better frameworks
+//are welcome!)
+let startTimer = () => { return { stop(){} };};
+let printTimings = () => {};
+if (process.env.YOLOADER_PROFILE) {
+	let totalTimings = {};
+	startTimer = (name) => {
+		let start = new Date().getTime();
+		return {
+			stop() {
+				let now = new Date().getTime();
+				if (!start) {
+					console.error('timer was already stopped');
+				} else {
+					let totalTiming = totalTimings[name] || { time : 0, calls : 0 };
+					totalTiming.time += now - start;
+					totalTiming.calls++;
+					totalTimings[name] = totalTiming;
+					start = null;
+				}
+			}
+		};
+	};
+	printTimings = () => {
+		console.log(totalTimings);
+	};
+}
 
 let transformers = {
 
@@ -29,11 +60,28 @@ let transformers = {
 	 * Finds and attaches dependencies of a file
 	 */
 	findDependencies (instance) {
+		instance.dependencyCache = instance.dependencyCache || new VinylCache();
+
 		return through.obj((chunk, enc, done) => {
-			chunk.deps = {};
-			detective(chunk.contents.toString())
-				//For now all dependencies will have value null since they're not resolved yet
-				.forEach((dep) => chunk.deps[dep] = null );
+			//We first try to get dependencies from cache.
+			//Only if that fails we'll try to find them again
+			let cachedDeps = instance.dependencyCache.get(chunk);
+
+			if (cachedDeps) {
+				chunk.deps = cachedDeps;
+			} else {
+				let timer = startTimer('findDeps');
+				chunk.deps = {};
+
+				detective(chunk.contents.toString())
+					//For now all dependencies will have value null since they're not resolved yet
+					.forEach((dep) => chunk.deps[dep] = null);
+
+				//Update cache stuff
+				instance.dependencyCache.set(chunk, chunk.deps);
+
+				timer.stop();
+			}
 			done(null, chunk);
 		});
 	},
@@ -43,6 +91,7 @@ let transformers = {
 	 */
 	resolveDependencies (instance) {
 		return through.obj(function resolveDependencies(chunk, enc, done) {
+			let timer = startTimer('resolveDeps');
 			//Push the current file, we'll need that anyway
 			let onSuccess = catcher(done);
 
@@ -65,45 +114,34 @@ let transformers = {
 					chunk.deps[depName] = dep;
 				});
 
+				timer.stop();
 				done(null, chunk);
 			}));
 		});
 	},
 
-	compileDependencies (instance, compile) {
+	compileDependencies (instance, compile, resolver) {
 		//TODO: more efficient duplicate checking
 		return through.obj(function (chunk, enc, done) {
+			let timer = startTimer('compileDepsPrepare');
 
 			let outer = this;
-			//We don't want to compile the same file twice, so we remove those that we've seen already
-			//here, and additionally we update the filesCompiled list
-			let newFiles = values(chunk.deps)
-				.filter((dep) => {
-					return instance.filesCompiled.indexOf(dep.file) === -1 &&
-						instance.filesPending.indexOf(dep.file) === -1;
-				});
-			instance.filesPending = instance.filesPending.concat(newFiles.map((file) => file.file));
-
-			//Note: we can only push the chunk when we're done with it's properties: as soon as the chunk
-			//is pushed it will be piped trough the rest of the pipeline, which might alter the object.
-			if (instance.filesCompiled.indexOf(chunk.path) === -1) {
-				instance.filesCompiled.push(chunk.path);
-				this.push(chunk);
-			}
+			this.push(chunk, enc);
+			let newFiles = values(chunk.deps);
 			let latch = countDownLatch(newFiles.length, () =>  done());
+			timer.stop();
 			newFiles.forEach((file) => {
-				let compileStream = compile(file.file, file.base);
-				//If the compile function didn't return anything then we ignore the file.
-				if (compileStream) {
-					compileStream.pipe(through.obj((chunk, enc, cb) => {
+				let timer = startTimer('compileDepsTrigger');
+				compile(vinylFs.src(file.file, { base : file.base }))
+					.pipe(resolver.resolveDependencies())
+					.pipe(through.obj((chunk, enc, cb) => {
 						outer.push(chunk);
 						//IMPORTANT: if we push the chunk here to the inner stream stuff blows up.
 						//I don't know why (yet), but just don't do it
 						cb();
 					}, (cb) => { latch.countDown(); cb(); } ));
-				} else {
-					latch.countDown();
-				}
+
+				timer.stop();
 			});
 		});
 	},
@@ -113,6 +151,7 @@ let transformers = {
 	 */
 	linkDependencies (instance) {
 		return through.obj(function (chunk, enc, done) {
+			let timer = startTimer('link');
 			Object.keys(chunk.deps)
 				.forEach((depName) =>  {
 					let dep = chunk.deps[depName];
@@ -133,6 +172,7 @@ let transformers = {
 						chunk.deps[depName].as = pathEntry.name + '/' + path.relative(pathEntry.path, dep.file);
 					}
 				});
+			timer.stop();
 			done(null, chunk);
 		});
 	},
@@ -170,6 +210,7 @@ let transformers = {
 
 		//We'll bundle all the individual stream items into one object here
 		return through.obj(function toBundle(chunk, enc, done) {
+			let timer = startTimer('bundle');
 			//First try to check if the vinyl base is exactly equal to some path entry. If it is, then we'll
 			//use that as the package.
 			let packageName;
@@ -230,6 +271,7 @@ let transformers = {
 					target.deps[dep] = chunk.deps[dep].as;
 				});
 			done();
+			timer.stop();
 		}, function finalizeBundle(cb) { //NOTE: don't use arrow functions here, it binds this and messes stuff up
 			this.push(bundle);
 			cb();
@@ -240,7 +282,9 @@ let transformers = {
 	 */
 	serialize (instance, bundleOpts) {
 		return through.obj(function serialize(chunk, enc, done) {
+			let timer = startTimer('serialize');
 			done(null, bundleSerializer(chunk, instance, bundleOpts));
+			timer.stop();
 		});
 	},
 	/**
@@ -253,9 +297,11 @@ let transformers = {
 			return through.obj();
 		} else {
 			return through.obj((chunk, enc, done) => {
+				let timer = startTimer('beautify');
 				let beauty = beautify(chunk.contents.toString());
 				chunk.contents = new Buffer(beauty);
 				done(null, chunk);
+				timer.stop();
 			});
 		}
 	},
@@ -285,6 +331,30 @@ let bundlePipeline = [
 
 function createPipeline(transformers, ...opts) {
 	return combine(transformers.map(binder(...opts)).map(invoke));
+}
+
+class Resolver {
+	constructor(yoloaderInstance, compiler) {
+		this.yoloader = yoloaderInstance;
+		this.compiler = compiler;
+		this.filesProcessed = new Set();
+	}
+	resolveDependencies() {
+		let id = Math.random();
+		let processor = this.yoloader.dependencyProcessor(this.yoloader, this.compiler, this);
+
+		let self = this;
+		//Filter the calls such that we only ever compile each file once
+		let filter = through.obj((chunk, enc, done) => {
+			if (self.filesProcessed.has(chunk.path)) {
+				return done(null, null);
+			} else {
+				self.filesProcessed.add(chunk.path);
+				return done(null, chunk);
+			}
+		});
+		return combine(filter, processor);
+	}
 }
 
 class Yoloader {
@@ -317,10 +387,13 @@ class Yoloader {
 	}
 
 	resolveDependencies(compiler) {
-		return this.dependencyProcessor(this, compiler);
+		compiler = compiler || (stream) => stream;
+		return new Resolver(this, compiler).resolveDependencies();
 	}
 	bundle(bundleOpts) {
 		return this.bundler(this, bundleOpts);
 	}
 }
 module.exports = Yoloader;
+
+process.on('exit', printTimings);

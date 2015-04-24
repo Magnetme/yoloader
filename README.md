@@ -30,17 +30,11 @@ var vinylFs = require('vinyl-fs');
 //Construct a new instance of yoloader
 var yoloader = new Yoloader(opts);
 
-
-function compile(file, base) {
-	//for gulp users: vinylFs.src === gulp.src
-	return vinylFs.src(file, { base : base })
-		//Find dependencies and recursively compile them
-		.pipe(yoloader.resolveDependencies(compile));
-}
-
 var root = __dirname;
 var entries = [path.join(root, 'app.js')];
-compile(entries, root)
+
+vinylFs.src(entries, { base : root })
+	.pipe(yoloader.resolveDependencies());
 	//bundle the compiled files together
 	.pipe(yoloader.bundle({ entries : entries, name : 'bundle.js' })
 	.pipe(vinylFs.dest(__dirname + '/out'));
@@ -60,55 +54,49 @@ that file accessible for the browser.
 ## Advanced usage
 
 ### Additional compilation steps
-Since you write the compile function you can add as many steps as you like! Keep in mind though that
+The `resolveDependencies` function accepts a callback that will be called with with vinyl streams for
+each file that it finds. You can implement any compilation step you like here, as long as you return
+a stream containing javascript files such that yoloader can parse it for dependencies. Keep in mind though that
 the `resolveDependencies` function will call the compile function with *all* dependencies, so the
 dependencies from `node_modules` will also be compiled with your compile function. (Tip: use [gulp-if](https://github.com/robrich/gulp-if) to conditionally apply your compilation steps to just your own files. Also works without gulp.)
 
 Use [babel](https://github.com/babel/babel) to compile from es6 to es5:
 ```javascript
-function compile(entries, root) {
-	return vinylFs.src(file, { base : base })
-		.pipe(babel())
-		.pipe(yoloader.resolveDependencies(compile));
+function compile(stream) {
+	return stream
+		.pipe(babel());
 }
 ```
 
-Minify files (with any of the many minification transformers):
+Processing steps that do not influence dependency resolving can also be done after dependencies
+have been resolved, which is more efficient in many cases. For example, minifying files could look
+like this:
+
 ```javascript
-compile(entries, root)
-	.pipe(yoloader.bundle({ entries : entries, name : 'bundle.js' }))
-	//Minification can best be done after bundling such that also the bundle code is minified
+vinylFs.src(entries, { base : root })
+	.pipe(yoloader.resolveDependencies());
 	.pipe(minify());
+	.pipe(yoloader.bundle({ entries : entries, name : 'bundle.js' }))
 	.pipe(vinylFs.dest(__dirname + '/out'));
 ```
 
 ### Sourcemap support
 
-Sourcemap support is enabled via [gulp-sourcemaps](https://www.npmjs.com/package/gulp-sourcemaps), and is only used in the bundle stage. It should be initialized before the call to `yoloader.resolveDependencies`:
+Sourcemap support is enabled via [gulp-sourcemaps](https://www.npmjs.com/package/gulp-sourcemaps).
+It should be initialized in the compile function such that all files will have sourcemaps enabled.
 
 ```javascript
-function compile(file, base) {
-	return vinylFs.src(file, { base : base })
+function compile(stream) {
+	return stream
 		.pipe(sourcemaps.init())
-		.pipe(yoloader.resolveDependencies(compile));
+		.pipe(babel())
 }
 
-compile(entries, root)
+vinylFs.src(entries, { base : root }
+	.pipe(yoloader.resolveDependencies(compile))
 	.pipe(yoloader.bundle({ entries : entries, name : 'bundle.js' }))
 	.pipe(sourcemaps.write())
 	.pipe(vinylFs.dest(__dirname + '/out'));
-```
-
-This also works with additional compilation steps that support gulp-sourcemaps::
-
-```javascript
-function compile(file, base) {
-	return vinylFs.src(file, { base : base })
-		.pipe(sourcemaps.init())
-		//Compile es6 to es5
-		.pipe(babel())
-		.pipe(yoloader.resolveDependencies(compile));
-}
 ```
 
 ### Multiple bundles
@@ -124,7 +112,11 @@ Constructs a new yoloader instance.
 
 ### Stream transformers
 #### `yoloader.resolveDependencies(compile)`
-Resolves all dependencies for its input stream. It accepts a compile function as its only argument, which it will call once for each dependency. It will pass the full dependency path as the first argument, and the base path as second argument, which can (and should) be used to construct a vinyl stream. The compile function must return a vinyl stream, which will appended to the input stream. The output stream of `resolveDependencies` is also a vinyl stream.
+Resolves all dependencies for its input stream.
+It accepts a compile function as its only argument, which it will call for all dependencies.
+It will pass a vinyl stream with the dependencies as it's only argument.
+The compile function must return a vinyl stream as well with javascript files that will be searched further for dependencies.
+Note that the compile function can be called an arbitrary number of times and the streams passed can contain any number of files.
 
 #### `yoloader.bundle(opts)`
 Bundles a vinyl stream into a single bundle file.
@@ -143,11 +135,10 @@ Transformer that exposes the node style `__dirname` and `__filename` properties 
 
 Example:
 ```javascript
-function compile(file, base)
-	return vinylFs.src(file, { base : base })
+function compile(stream)
+	return stream
 		.pipe(sourcemaps.init())
 		.pipe(dirname())
-		.pipe(yoloader.resolveDependencies(opts))
 }
 ```
 
@@ -159,10 +150,9 @@ This plugin can be used to wrap browserify transformers such that they can be us
 
 Example (using the [brfs](https://github.com/substack/brfs) transformer):
 ```javascript
-function compile(file, base) {
-	return vinylFs.src(file, { base : base })
+function compile(stream) {
+	return stream
 		.pipe(transform(brfs))
-		.pipe(resolveDependencies(opts));
 }
 ```
 
@@ -188,10 +178,9 @@ shimConfig[pathToAngularJs] = {
 	exports : 'angular'
 };
 
-function compile(file, base) {
-	return vinylFs.src(file, { base : base })
+function compile(stream) {
+	return stream
 		.pipe(shim(shimConfig))
-		.pipe(resolveDependencies(opts));
 }
 
 ```
@@ -209,7 +198,7 @@ var shimConfig = {
 Plugin to allow packages to specify their own compilation steps.
 
 Usage:
-- Packages may specify a compile script in their `package.json` in the `yoloaderCompile` field.
+- Packages may specify a compile script in their `package.json` in the `yoloaderCompile` field. This value will be resolved as if it where a require call such that scripts from external dependencies can also be used.
 - Extra dependencies may be specified in the `yoloaderDependencies` field of the `package.json`, these will
   be installed before running the compiler.
 - The package compile script should export a function that returns a transform stream in object mode.
@@ -222,7 +211,7 @@ Example:
 ```javascript
 {
 	"name" : "a",
-	"yoloaderCompile" : "yolofile.js",
+	"yoloaderCompile" : "./yolofile.js",
 	"yoloaderDependencies" : {
 		"my-translate" : "~1.2.3"
 	}
@@ -246,8 +235,8 @@ var packageOptions = {
 	}
 };
 
-function compile(file, base) {
-	return vinylFs.src(file, { base : base })
+function compile(stream) {
+	return stream
 		.pipe(packageCompile(packageOptions))
 		.pipe(yoloader.resolveDependencies(opts));
 }
