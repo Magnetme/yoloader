@@ -387,6 +387,7 @@ class Yoloader {
 	}
 
 	resolveDependencies(compiler) {
+		compiler = compiler || (stream) => stream;
 		return new Resolver(this, compiler).resolveDependencies();
 	}
 	bundle(bundleOpts) {
