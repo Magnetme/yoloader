@@ -63,9 +63,8 @@ let transformers = {
 		instance.dependencyCache = instance.dependencyCache || new VinylCache();
 
 		return through.obj((chunk, enc, done) => {
-			let content = chunk.contents.toString();
 			//We first try to get dependencies from cache.
-			//Only if that fails we'll find them again
+			//Only if that fails we'll try to find them again
 			let cachedDeps = instance.dependencyCache.get(chunk);
 
 			if (cachedDeps) {
@@ -74,7 +73,7 @@ let transformers = {
 				let timer = startTimer('findDeps');
 				chunk.deps = {};
 
-				detective(content)
+				detective(chunk.contents.toString())
 					//For now all dependencies will have value null since they're not resolved yet
 					.forEach((dep) => chunk.deps[dep] = null);
 

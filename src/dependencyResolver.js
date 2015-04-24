@@ -29,7 +29,8 @@ module.exports = function dependencyResolver(chunk, instance) {
 	return function resolveDependency(depName, done) {
 		debug('Resolving dependency from ' + chunk.path + ' to ' + depName);
 
-		//TODO: async cache
+		//TODO: cache promises instead such that fast successive calls for the same file
+		//still are only resolved once.
 		let cached = instance.resolverCache[chunk.path][depName];
 		if (cached) {
 			//If we've found the file in cache then it doesn't necessarily mean it still exists.
