@@ -54,17 +54,16 @@ that file accessible for the browser.
 ## Advanced usage
 
 ### Additional compilation steps
-The `resolveDependencies` function accepts a callback that will be called with with vinyl streams for
-each file that it finds. You can implement any compilation step you like here, as long as you return
+The `resolveDependencies` function accepts a callback that provides a vinyl transformer.
+You can implement any compilation step you like here, as long as the transformation results in
 a stream containing javascript files such that yoloader can parse it for dependencies. Keep in mind though that
 the `resolveDependencies` function will call the compile function with *all* dependencies, so the
 dependencies from `node_modules` will also be compiled with your compile function. (Tip: use [gulp-if](https://github.com/robrich/gulp-if) to conditionally apply your compilation steps to just your own files. Also works without gulp.)
 
 Use [babel](https://github.com/babel/babel) to compile from es6 to es5:
 ```javascript
-function compile(stream) {
-	return stream
-		.pipe(babel());
+function compile() {
+	return babel();
 }
 ```
 
@@ -86,10 +85,11 @@ Sourcemap support is enabled via [gulp-sourcemaps](https://www.npmjs.com/package
 It should be initialized in the compile function such that all files will have sourcemaps enabled.
 
 ```javascript
-function compile(stream) {
-	return stream
-		.pipe(sourcemaps.init())
-		.pipe(babel())
+function compile() {
+	return combine(
+		sourcemaps.init(),
+		babel()
+	);
 }
 
 vinylFs.src(entries, { base : root }
@@ -135,10 +135,11 @@ Transformer that exposes the node style `__dirname` and `__filename` properties 
 
 Example:
 ```javascript
-function compile(stream)
-	return stream
-		.pipe(sourcemaps.init())
-		.pipe(dirname())
+function compile()
+	return combine(
+		sourcemaps.init(),
+		dirname()
+	);
 }
 ```
 
@@ -150,9 +151,8 @@ This plugin can be used to wrap browserify transformers such that they can be us
 
 Example (using the [brfs](https://github.com/substack/brfs) transformer):
 ```javascript
-function compile(stream) {
-	return stream
-		.pipe(transform(brfs))
+function compile() {
+	return transform(brfs);
 }
 ```
 
@@ -178,9 +178,8 @@ shimConfig[pathToAngularJs] = {
 	exports : 'angular'
 };
 
-function compile(stream) {
-	return stream
-		.pipe(shim(shimConfig))
+function compile() {
+	return shim(shimConfig);
 }
 
 ```
@@ -236,9 +235,10 @@ var packageOptions = {
 };
 
 function compile(stream) {
-	return stream
-		.pipe(packageCompile(packageOptions))
-		.pipe(yoloader.resolveDependencies(opts));
+	return combine(
+		packageCompile(packageOptions),
+		yoloader.resolveDependencies(opts)
+	);
 }
 
 //etc.

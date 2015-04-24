@@ -33,8 +33,10 @@ function serializeModule(module, bundleState) {
 	//We need every file to end in a newline, otherwise it might break stuff (e.g. when it ends in a linecomment)
 	//For simplicity we just always add the newline
 	content += '\n';
-	//We need to slice of the /content part, as well as the /<bundle>/files part
-	let name = bundleState.bundlePathParts.slice(2, -1).join('/');
+	//We need to slice of the /content part at the end, as well as the /files part at the beginning (second part)
+	let nameParts = bundleState.bundlePathParts.slice(0, -1);
+	nameParts.splice(1, 1);
+	let name = nameParts.join('/');
 	res += bundleState.add(content, name, module.sourceMap);
 
 	res += bundleState.add('}');

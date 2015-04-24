@@ -56,6 +56,10 @@ if (process.env.YOLOADER_PROFILE) {
 
 let transformers = {
 
+	compile(instance, compile) {
+		return compile();
+	},
+
 	/**
 	 * Finds and attaches dependencies of a file
 	 */
@@ -132,7 +136,7 @@ let transformers = {
 			timer.stop();
 			newFiles.forEach((file) => {
 				let timer = startTimer('compileDepsTrigger');
-				compile(vinylFs.src(file.file, { base : file.base }))
+				vinylFs.src(file.file, { base : file.base })
 					.pipe(resolver.resolveDependencies())
 					.pipe(through.obj((chunk, enc, cb) => {
 						outer.push(chunk);
@@ -317,6 +321,7 @@ let transformers = {
 
 
 let dependencyPipeline = [
+	transformers.compile,
 	transformers.findDependencies,
 	transformers.resolveDependencies,
 	transformers.compileDependencies,
