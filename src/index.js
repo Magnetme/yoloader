@@ -67,6 +67,11 @@ let transformers = {
 		instance.dependencyCache = instance.dependencyCache || new VinylCache();
 
 		return through.obj((chunk, enc, done) => {
+			//If there are already deps set then the chunk probably comes from some cache. We won't bother
+			//changing it then, it'll only mess up things.
+			if (chunk.deps) {
+				return done(null, chunk);
+			}
 			//We first try to get dependencies from cache.
 			//Only if that fails we'll try to find them again
 			let cachedDeps = instance.dependencyCache.get(chunk);
@@ -83,7 +88,6 @@ let transformers = {
 
 				//Update cache stuff
 				instance.dependencyCache.set(chunk, chunk.deps);
-
 				timer.stop();
 			}
 			done(null, chunk);
