@@ -5,6 +5,7 @@ var through = require('through2');
 var mapFiles = require('../out/plugins/mapFiles');
 var sourcemaps = require('gulp-sourcemaps');
 var babel = require('gulp-babel');
+var shim = require('../plugins/shim');
 
 var entries = ['foo.js'];
 
@@ -19,6 +20,11 @@ function compile(file, base) {
 	return fs.src(file, { base : base })
 		.pipe(sourcemaps.init())
 		.pipe(babel())
+		.pipe(shim({
+			'foo' : {
+				exports : 'test'
+			}
+		}))
 		.pipe(yoloader.resolveDependencies(compile));
 }
 
