@@ -185,7 +185,6 @@ function compile() {
 ```
 
 Keys for the shimconfig may also be node package names or glob patterns.
-```
 
 #### packageCompile
 
