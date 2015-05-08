@@ -74,7 +74,8 @@ function findShim(file, shims, packageShims, cb) {
 			if (err) {
 				cb(err);
 			} else {
-				let isMain = path.join(path.dirname(res.path), res.pack.main) === file;
+				let mainFile = res.pack.main || "index.js";
+				let isMain = path.join(path.dirname(res.path), mainFile) === file;
 				let shim = isMain && packageShims[res.pack.name];
 				cb(null, shim);
 			}
