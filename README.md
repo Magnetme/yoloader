@@ -169,10 +169,12 @@ Allows non-CommonJS modules to be used as CommonJS module. It adds `require` cal
 Example:
 ```javascript
 var shimConfig = {};
-shimConfig[pathToAngularJs] = {
+shimConfig['angular'] = {
 	depends : {
-		//results in `var jQuery = require('jquery');`
-		'jQuery' : 'jquery'
+		//results in `var $ = require('jquery');`
+		'jquery' : '$'
+		//results in `require('somePackage');`
+		'somePackage' : null
 	},
 	//results in `module.exports = angular`
 	exports : 'angular'
@@ -184,7 +186,7 @@ function compile() {
 
 ```
 
-Keys for the shimconfig may also be node package names or glob patterns.
+Keys for the shimconfig object may be node package names, paths or glob patterns.
 
 #### packageCompile
 

@@ -47,13 +47,8 @@ function findShim(file, shims, packageShims, cb) {
 	if (!shim) {
 		//If we still haven't found a shim here then we try a package based shim
 		let keys = Object.keys(packageShims);
-		//First we skip the obvious base case: if there is no packageShim definition then there's nothing
-		//to do here
-		if (!keys.length) {
-			return cb();
-		}
 		//First we simply try to match on filename
-		let shim = keys
+		let shimKey = keys
 			.find((shimKey) => {
 				let shimFile = shimKey;
 				//require calls don't require .js, so we don't either
@@ -65,6 +60,7 @@ function findShim(file, shims, packageShims, cb) {
 					//not as filename
 					file.endsWith('node_modules/' + shimKey + '/index.js');
 			});
+		shim = shimKey && packageShims[shimKey];
 		if (shim) {
 			return cb(null, shim);
 		}
@@ -119,14 +115,33 @@ module.exports = function shim(shims) {
 				let suffix = '';
 				//Add require calls when needed
 				if (shim.depends) {
-					//Depends is a map of <var-name>:<require-name> pairs
-					let requires = Object.keys(shim.depends)
+					//Depends is a map of <require-name>:<var-name> pairs
+					let dependencies = Object.keys(shim.depends);
+					//we split them up based on wheter we should do something with the return value
+					//requires will be an array of those dependencies that don't have a return value
+					let requires = dependencies
+						.filter((dependency) => !shim.depends[dependency])
 						.map((dependency) => {
-							//stringify to ensure valid js
-							let requireString = JSON.stringify(shim.depends[dependency]);
-							return `${dependency}=require(${requireString})`;
+							let required = JSON.stringify(dependency);
+							return `require(${required});`;
 						});
-					prefix = 'var ' + requires.join(',') + ';';
+
+					//and assigns will be the array of those with a return value
+					let assigns = dependencies
+						.filter((dependency) => shim.depends[dependency])
+						.map((dependency) => {
+							let required = JSON.stringify(dependency);
+							let varName = shim.depends[dependency];
+							//Note that we omit the semicolon here: we combine multiple assigns expressions into a single
+							//assign statement, so we don't need the semicolon here yet
+							return `${varName}=require(${required})`;
+						});
+
+
+					prefix = requires.join('');
+					if (assigns.length) {
+						prefix += 'var ' + assigns.join(',') + ';';
+					}
 				}
 				if (shim.exports) {
 					//We need a leading ; because we can't be sure the file is closed properly
@@ -136,7 +151,7 @@ module.exports = function shim(shims) {
 				chunk.contents = new Buffer(prefix + fileContent + suffix);
 				//Apply sourcemaps
 				if (chunk.sourceMap) {
-					let map = prefixSourceMap(chunk, prefix, fileContent);
+					let map = prefixSourceMap(chunk, '', fileContent);
 					applySourceMap(chunk, map);
 				}
 			}
