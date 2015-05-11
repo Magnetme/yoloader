@@ -74,8 +74,20 @@ function findShim(file, shims, packageShims, cb) {
 			if (err) {
 				cb(err);
 			} else {
-				let mainFile = res.pack.main || "index.js";
-				let isMain = path.join(path.dirname(res.path), mainFile) === file;
+				let mainFile = res.pack.main;
+				let isMain;
+				if (mainFile instanceof Array) {
+					console.warn("A package.json contains an invalid main field, it should be a string. Offending file: ", res.path);
+					//Even though the package.json is invalid we still try to use it as intended such that
+					//users of yoloader won't get trolled by idiot package maintainers.
+					isMain = mainFile.reduce((previous, current) => {
+						return current && path.join(path.dirname(res.path), current) === file;
+					}, false);
+				} else if (!mainFile || typeof mainFile !== 'string') {
+					//Default value
+					mainFile = 'index.js';
+					isMain = path.join(path.dirname(res.path), mainFile) === file;
+				}
 				let shim = isMain && packageShims[res.pack.name];
 				cb(null, shim);
 			}
