@@ -119,12 +119,18 @@ module.exports = function shim(shims) {
 				let suffix = '';
 				//Add require calls when needed
 				if (shim.depends) {
-					//Depends is a map of <var-name>:<require-name> pairs
+					//Depends is a map of <require-name>:<var-name> pairs
 					let requires = Object.keys(shim.depends)
 						.map((dependency) => {
 							//stringify to ensure valid js
-							let requireString = JSON.stringify(shim.depends[dependency]);
-							return `${dependency}=require(${requireString})`;
+							let requireString = JSON.stringify(dependency);
+							let varName = shim.depends[dependency];
+							let requireStatement = '';
+							if (varName) {
+								requireStatement += `${varname}=`;
+							}
+							requireStatement += 'require(${requireString})';
+							return requireStatement;
 						});
 					prefix = 'var ' + requires.join(',') + ';';
 				}
