@@ -151,7 +151,7 @@ module.exports = function shim(shims) {
 				chunk.contents = new Buffer(prefix + fileContent + suffix);
 				//Apply sourcemaps
 				if (chunk.sourceMap) {
-					let map = prefixSourceMap(chunk, '', fileContent);
+					let map = prefixSourceMap(chunk, prefix, fileContent);
 					applySourceMap(chunk, map);
 				}
 			}
