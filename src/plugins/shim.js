@@ -47,13 +47,8 @@ function findShim(file, shims, packageShims, cb) {
 	if (!shim) {
 		//If we still haven't found a shim here then we try a package based shim
 		let keys = Object.keys(packageShims);
-		//First we skip the obvious base case: if there is no packageShim definition then there's nothing
-		//to do here
-		if (!keys.length) {
-			return cb();
-		}
 		//First we simply try to match on filename
-		let shim = keys
+		let shimKey = keys
 			.find((shimKey) => {
 				let shimFile = shimKey;
 				//require calls don't require .js, so we don't either
@@ -65,6 +60,7 @@ function findShim(file, shims, packageShims, cb) {
 					//not as filename
 					file.endsWith('node_modules/' + shimKey + '/index.js');
 			});
+		shim = shimKey && packageShims[shimKey];
 		if (shim) {
 			return cb(null, shim);
 		}
@@ -127,9 +123,9 @@ module.exports = function shim(shims) {
 							let varName = shim.depends[dependency];
 							let requireStatement = '';
 							if (varName) {
-								requireStatement += `${varname}=`;
+								requireStatement += `${varName}=`;
 							}
-							requireStatement += 'require(${requireString})';
+							requireStatement += `require(${requireString})`;
 							return requireStatement;
 						});
 					prefix = 'var ' + requires.join(',') + ';';
