@@ -116,19 +116,32 @@ module.exports = function shim(shims) {
 				//Add require calls when needed
 				if (shim.depends) {
 					//Depends is a map of <require-name>:<var-name> pairs
-					let requires = Object.keys(shim.depends)
+					let dependencies = Object.keys(shim.depends);
+					//we split them up based on wheter we should do something with the return value
+					//requires will be an array of those dependencies that don't have a return value
+					let requires = dependencies
+						.filter((dependency) => !shim.depends[dependency])
 						.map((dependency) => {
-							//stringify to ensure valid js
-							let requireString = JSON.stringify(dependency);
-							let varName = shim.depends[dependency];
-							let requireStatement = '';
-							if (varName) {
-								requireStatement += `${varName}=`;
-							}
-							requireStatement += `require(${requireString})`;
-							return requireStatement;
+							let required = JSON.stringify(dependency);
+							return `require(${required});`;
 						});
-					prefix = 'var ' + requires.join(',') + ';';
+
+					//and assigns will be the array of those with a return value
+					let assigns = dependencies
+						.filter((dependency) => shim.depends[dependency])
+						.map((dependency) => {
+							let required = JSON.stringify(dependency);
+							let varName = shim.depends[dependency];
+							//Note that we omit the semicolon here: we combine multiple assigns expressions into a single
+							//assign statement, so we don't need the semicolon here yet
+							return `${varName}=require(${required})`;
+						});
+
+
+					prefix = requires.join('');
+					if (assigns.length) {
+						prefix += 'var ' + assigns.join(',') + ';';
+					}
 				}
 				if (shim.exports) {
 					//We need a leading ; because we can't be sure the file is closed properly
@@ -138,7 +151,7 @@ module.exports = function shim(shims) {
 				chunk.contents = new Buffer(prefix + fileContent + suffix);
 				//Apply sourcemaps
 				if (chunk.sourceMap) {
-					let map = prefixSourceMap(chunk, prefix, fileContent);
+					let map = prefixSourceMap(chunk, '', fileContent);
 					applySourceMap(chunk, map);
 				}
 			}
