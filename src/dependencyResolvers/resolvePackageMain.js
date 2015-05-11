@@ -23,7 +23,10 @@ module.exports = function resolvePackageMain(dep, opts, cb) {
 
 			fs.readFile(packagePath, 'utf8', onSuccess((packageContent) => {
 				let main = JSON.parse(packageContent).main;
-				if (main) {
+				if (main && typeof main !== "string" ) {
+					console.warn("package.json found with an invalid main field. Ignoring file while resoling dependencies. File: ", packagePath);
+				}
+				if (main && typeof main === "string") {
 					let mainFile = path.resolve(path.dirname(packagePath), main);
 					debug(`Found main field ${mainFile} in package.json for ${dep.to} from ${dep.from}`);
 
