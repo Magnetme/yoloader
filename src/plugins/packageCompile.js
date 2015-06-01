@@ -127,7 +127,7 @@ module.exports = function packageCompile(opts, globalOptions) {
 		let outerStream = this;
 		//We need to find the package.json of our chunk to find the compiler configuration
 		//The package.json#yoloaderCompile field should contain the filename of the module compiler
-		mothership(chunk.path, () => true, (err, res) => {
+		mothership(chunk.path, (pack) => !!pack.yoloaderCompile, (err, res) => {
 			if (err) {
 				return done(new Error(err));
 			}
