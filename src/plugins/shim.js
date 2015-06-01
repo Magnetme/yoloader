@@ -79,9 +79,11 @@ function findShim(file, shims, packageShims, cb) {
 					isMain = mainFile.reduce((previous, current) => {
 						return current && path.join(path.dirname(res.path), current) === file;
 					}, false);
-				} else if (!mainFile || typeof mainFile !== 'string') {
-					//Default value
-					mainFile = 'index.js';
+				} else {
+					if (!mainFile || typeof mainFile !== 'string') {
+						//Default value
+						mainFile = 'index.js';
+					}
 					isMain = path.join(path.dirname(res.path), mainFile) === file;
 				}
 				let shim = isMain && packageShims[res.pack.name];
@@ -94,7 +96,11 @@ function findShim(file, shims, packageShims, cb) {
 /**
  * Provides a shim for non-commonjs files.
  */
-module.exports = function shim(shims) {
+module.exports = function shim(shimsIn) {
+	let shims = {};
+	//We need to clone the shims first because we destruct the object in the process
+	Object.keys(shimsIn)
+		.forEach((key) => shims[key] = shimsIn[key]);
 	let packageShims = extractPackageShims(shims);
 
 	return through.obj((chunk, enc, done) => {
