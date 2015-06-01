@@ -79,9 +79,11 @@ function findShim(file, shims, packageShims, cb) {
 					isMain = mainFile.reduce((previous, current) => {
 						return current && path.join(path.dirname(res.path), current) === file;
 					}, false);
-				} else if (!mainFile || typeof mainFile !== 'string') {
-					//Default value
-					mainFile = 'index.js';
+				} else {
+					if (!mainFile || typeof mainFile !== 'string') {
+						//Default value
+						mainFile = 'index.js';
+					}
 					isMain = path.join(path.dirname(res.path), mainFile) === file;
 				}
 				let shim = isMain && packageShims[res.pack.name];
