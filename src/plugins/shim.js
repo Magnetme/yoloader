@@ -96,7 +96,11 @@ function findShim(file, shims, packageShims, cb) {
 /**
  * Provides a shim for non-commonjs files.
  */
-module.exports = function shim(shims) {
+module.exports = function shim(shimsIn) {
+	let shims = {};
+	//We need to clone the shims first because we destruct the object in the process
+	Object.keys(shimsIn)
+		.forEach((key) => shims[key] = shimsIn[key]);
 	let packageShims = extractPackageShims(shims);
 
 	return through.obj((chunk, enc, done) => {
